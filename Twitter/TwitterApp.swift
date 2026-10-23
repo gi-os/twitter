@@ -5,13 +5,14 @@
 //  Created by Sam on 10/23/26.
 //
 
+import AppFeature
 import SwiftUI
 
 @main
 struct TwitterApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            AppView()
         }
     }
 }

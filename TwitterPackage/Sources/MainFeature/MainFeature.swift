@@ -1,0 +1,89 @@
+import ComposableArchitecture
+import ComposeFeature
+import Models
+import Routing
+import TabStackFeature
+import TwitterClient
+
+@Reducer
+package struct MainFeature {
+    @ObservableState
+    package struct State: Equatable {
+        var bookmarks = TabStack.State.bookmarks
+        @Presents var compose: ComposeFeature.State?
+        var explore = TabStack.State.explore
+        var home = TabStack.State.home
+        var notifications = TabStack.State.notifications
+        var profile: TabStack.State
+        var selectedTab = Tab.home
+        var viewer: User
+
+        package init(viewer: User) {
+            self.viewer = viewer
+            profile = .profile(viewer: viewer)
+        }
+    }
+
+    package enum Tab: Hashable {
+        case bookmarks
+        case explore
+        case home
+        case notifications
+        case profile
+    }
+
+    package enum Action: BindableAction {
+        case binding(BindingAction<State>)
+        case bookmarks(TabStack.Action)
+        case compose(PresentationAction<ComposeFeature.Action>)
+        case delegate(Delegate)
+        case explore(TabStack.Action)
+        case home(TabStack.Action)
+        case notifications(TabStack.Action)
+        case profile(TabStack.Action)
+
+        package enum Delegate {
+            case signedOut
+        }
+    }
+
+    @Dependency(TwitterClient.self) var client
+
+    package init() {}
+
+    package var body: some Reducer<State, Action> {
+        BindingReducer()
+        Scope(state: \.bookmarks, action: \.bookmarks) { TabStack() }
+        Scope(state: \.explore, action: \.explore) { TabStack() }
+        Scope(state: \.home, action: \.home) { TabStack() }
+        Scope(state: \.notifications, action: \.notifications) { TabStack() }
+        Scope(state: \.profile, action: \.profile) { TabStack() }
+        Reduce { state, action in
+            switch action {
+            case .bookmarks(.delegate(let delegate)),
+                .explore(.delegate(let delegate)),
+                .home(.delegate(let delegate)),
+                .notifications(.delegate(let delegate)),
+                .profile(.delegate(let delegate)):
+                switch delegate {
+                case .compose(let draft):
+                    state.compose = ComposeFeature.State(draft: draft)
+                    return .none
+                case .open:
+                    return .none
+                case .signOut:
+                    return .run { send in
+                        await client.signOut()
+                        await send(.delegate(.signedOut))
+                    }
+                }
+
+            case .binding, .bookmarks, .compose, .delegate, .explore, .home, .notifications, .profile:
+                return .none
+            }
+        }
+        .ifLet(\.$compose, action: \.compose) {
+            ComposeFeature()
+        }
+    }
+}
