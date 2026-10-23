@@ -153,15 +153,9 @@ package struct EngagementBar: View {
             }
             .accessibilityLabel("Repost")
             Spacer(minLength: 0)
-            EngagementButton(
-                action: { store.send(.likeButtonTapped(tweet)) },
-                activeColor: .pink,
-                activeSymbol: "heart.fill",
-                count: engagement.like.count,
-                isActive: engagement.like.isOn,
-                label: engagement.like.isOn ? "Unlike" : "Like",
-                symbol: "heart"
-            )
+            LikeButton(isLiked: engagement.like.isOn, count: engagement.like.count) {
+                store.send(.likeButtonTapped(tweet))
+            }
             Spacer(minLength: 0)
             if let views = tweet.viewCount {
                 Label(views.compact, systemImage: "chart.bar")
