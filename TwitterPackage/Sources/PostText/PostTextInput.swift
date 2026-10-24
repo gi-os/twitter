@@ -3,24 +3,15 @@ import Models
 
 /// Everything that decides how a piece of post text is typeset; the typesetter's cache is keyed on it by equality.
 package struct PostTextInput: Hashable, Sendable {
-    /// How the text is read.
-    package enum Flavor: Hashable, Sendable {
-        /// A post: links, mentions, hashtags and cashtags, with Twitter's own bold/italic ranges. Markdown punctuation
-        /// stays literal, as it does on Twitter.
-        case post
-        /// Free text that may carry inline Markdown (`**strong**`, `*emphasis*`, `` `code` ``, `~~strike~~`,
-        /// `[label](https://…)`) on top of everything a post recognizes: community notes and profile bios.
-        case markdown
-    }
-
     package var text: String
     /// Substring of `text` → destination (a post's display URLs).
     package var links: [String: URL]
     /// Hashtags and cashtags (with their `#`/`$`) Twitter recognized; others are still found by pattern.
     package var tags: [String]
-    /// Bold/italic ranges in Unicode-scalar offsets of `text`.
+    /// Bold/italic ranges in Unicode-scalar offsets of `text`: Twitter's own rich text, the only styling there is.
+    /// Markdown punctuation (`**`, `_`, `` ` ``, `[…](…)`) stays literal in posts, notes and bios alike, as it does on
+    /// Twitter.
     package var styles: [TextStyleRange]
-    package var flavor: Flavor
     /// When set, the text is cut at a word boundary near this many characters and ends in an ellipsis. A link,
     /// mention or tag is never cut in half: the cut moves to before it.
     package var characterLimit: Int?
@@ -32,14 +23,12 @@ package struct PostTextInput: Hashable, Sendable {
         links: [String: URL] = [:],
         tags: [String] = [],
         styles: [TextStyleRange] = [],
-        flavor: Flavor = .post,
         characterLimit: Int? = nil
     ) {
         self.text = text
         self.links = links
         self.tags = tags
         self.styles = styles
-        self.flavor = flavor
         self.characterLimit = characterLimit.flatMap { PostTextInput.needsTruncation(text, limit: $0) ? $0 : nil }
     }
 

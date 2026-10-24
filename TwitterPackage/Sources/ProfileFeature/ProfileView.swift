@@ -213,8 +213,8 @@ private struct ProfileHeader: View {
             .padding(.horizontal, 16)
 
             if !user.bio.isEmpty {
-                Text(user.bio)
-                    .font(metrics.font(.body))
+                // Links, mentions and hashtags, as in a post; any Markdown punctuation stays as typed.
+                TweetText(links: [:], text: user.bio, font: metrics.font(.body))
                     .lineSpacing(metrics.lineSpacing(for: .body))
                     .foregroundStyle(.twitterPrimary)
                     .padding(.horizontal, 16)
@@ -295,7 +295,7 @@ private struct FollowButton: View {
             }
         }
         .buttonStyle(isFollowing ? .classicProminent : .classic)
-            .sensoryFeedback(.success, trigger: isFollowing)
+        .sensoryFeedback(.success, trigger: isFollowing)
     }
 }
 

@@ -1,8 +1,8 @@
 import Foundation
 import Synchronization
 
-/// Post text typeset into an attributed string: links on every entity, Twitter's bold/italic and Markdown styling as
-/// inline presentation intents, and each entity tagged with ``PostEntityAttribute``.
+/// Post text typeset into an attributed string: links on every entity, Twitter's bold/italic as inline presentation
+/// intents, and each entity tagged with ``PostEntityAttribute``.
 package struct TypesetPostText: Equatable, Sendable {
     /// A stretch of the text that is either all one entity (a mention, tag or link) or has none, so a view can tag
     /// each entity's runs.

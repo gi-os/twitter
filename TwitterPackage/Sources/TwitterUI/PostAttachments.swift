@@ -126,7 +126,7 @@ package struct CommunityNoteCard: View {
             Label(note.shortTitle ?? "Readers added context", systemImage: "person.2.fill")
                 .font(.subheadline.weight(.semibold))
 
-            TweetText(links: note.links, text: note.text, font: .subheadline, flavor: .markdown)
+            TweetText(links: note.links, text: note.text, font: .subheadline)
 
             if let footer = note.footer {
                 Text(footer)

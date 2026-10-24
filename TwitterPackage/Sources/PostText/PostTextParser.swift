@@ -18,29 +18,24 @@ package struct PostTextPiece: Hashable, Sendable {
 /// Post text → pieces. Pure and synchronous; ``PostTextTypesetter`` decides where it runs and caches the result.
 ///
 /// The passes, in order:
-/// 1. **Blocks of styling**: for ``PostTextInput/Flavor/markdown``, the inline Markdown scanner splits the text into
-///    emphasized, code and link segments (posts are one segment).
-/// 2. **Entities**: each plain segment is tokenized into URLs, mentions, hashtags and cashtags. Entities are atomic:
-///    nothing later splits or restyles part of one, except Twitter's own bold/italic ranges.
-/// 3. **Twitter styles**: a post's Unicode-scalar bold/italic ranges cut pieces at their edges.
-/// 4. **Character references**: `&amp;`-style escapes left in plain text are decoded.
-/// 5. **Truncation**, when a character limit is set, at a word boundary and never inside an entity.
+/// 1. **Entities**: the text is tokenized into URLs, mentions, hashtags and cashtags. Entities are atomic: nothing
+///    later splits or restyles part of one, except Twitter's own bold/italic ranges.
+/// 2. **Twitter styles**: the Unicode-scalar bold/italic ranges cut pieces at their edges. They're the only styling:
+///    no punctuation is read as Markdown.
+/// 3. **Character references**: `&amp;`-style escapes left in plain text are decoded.
+/// 4. **Truncation**, when a character limit is set, at a word boundary and never inside an entity.
 package enum PostTextParser {
     package static func pieces(for input: PostTextInput) -> [PostTextPiece] {
-        var pieces =
-            switch input.flavor {
-            case .post: postPieces(input)
-            case .markdown: markdownPieces(input)
-            }
+        var pieces = styledPieces(input)
         if let limit = input.characterLimit {
             pieces = truncate(pieces, limit: limit)
         }
         return coalesce(pieces)
     }
 
-    // MARK: Posts
+    // MARK: Entities and styles
 
-    private static func postPieces(_ input: PostTextInput) -> [PostTextPiece] {
+    private static func styledPieces(_ input: PostTextInput) -> [PostTextPiece] {
         let text = input.text
         let scalars = text.unicodeScalars
         let tokens = EntityScanner.tokens(in: text, links: input.links, tags: input.tags)
@@ -75,26 +70,6 @@ package enum PostTextParser {
                     }
                 }
                 pieces.append(piece(String(scalars[start..<end]), entity: token.entity, emphasis: emphasis))
-            }
-        }
-        return pieces
-    }
-
-    // MARK: Markdown
-
-    private static func markdownPieces(_ input: PostTextInput) -> [PostTextPiece] {
-        var pieces: [PostTextPiece] = []
-        for segment in InlineMarkdownScanner.segments(in: input.text) {
-            if let link = segment.link {
-                pieces.append(PostTextPiece(text: segment.text, entity: .url(link), emphasis: segment.emphasis))
-            } else if segment.emphasis.contains(.code) {
-                pieces.append(PostTextPiece(text: segment.text, emphasis: segment.emphasis))
-            } else {
-                let scalars = segment.text.unicodeScalars
-                for token in EntityScanner.tokens(in: segment.text, links: input.links, tags: input.tags) {
-                    pieces.append(
-                        piece(String(scalars[token.range]), entity: token.entity, emphasis: segment.emphasis))
-                }
             }
         }
         return pieces

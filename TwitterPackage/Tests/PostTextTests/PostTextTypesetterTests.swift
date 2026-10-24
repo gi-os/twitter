@@ -110,50 +110,40 @@ struct PostTextTypesetterTests {
         #expect(PostTextTypesetter.build(PostTextInput(text: "nothing to see here")).segments.isEmpty)
     }
 
-    @Test
-    func postsKeepMarkdownPunctuationLiteral() {
-        let typeset = PostTextTypesetter.build(PostTextInput(text: "**not bold** and _not italic_"))
+    /// Twitter has no Markdown: asterisks around a word are asterisks. Posts, community notes and bios all take this
+    /// path (notes with their links, bios without).
+    @Test(
+        arguments: [
+            "**word**", "*word*", "`x`", "__word__ and _word_", "~~gone~~", "2*3*4", "# not a heading",
+            "[docs](https://swift.org)", "\\*escaped\\*"
+        ],
+        [[:], ["swift.org": URL(string: "https://swift.org")!]] as [[String: URL]]
+    )
+    func markdownPunctuationStaysLiteral(text: String, links: [String: URL]) {
+        let typeset = PostTextTypesetter.build(PostTextInput(text: text, links: links))
         #expect(typeset.attributedString.runs.allSatisfy { $0.inlinePresentationIntent == nil })
-        #expect(String(typeset.attributedString.characters) == "**not bold** and _not italic_")
-    }
-
-    @Test
-    func markdownInlineStyling() throws {
-        let typeset = PostTextTypesetter.build(
-            PostTextInput(
-                text: "**Strong** *em* `a_b` ~~gone~~ [docs](https://swift.org) \\*lit\\*",
-                flavor: .markdown))
-
-        let runs = Dictionary(
-            typeset.attributedString.runs.map {
-                (String(typeset.attributedString[$0.range].characters), $0.inlinePresentationIntent)
-            },
-            uniquingKeysWith: { first, _ in first })
-        #expect(runs["Strong"] == .stronglyEmphasized)
-        #expect(runs["em"] == .emphasized)
-        #expect(runs["a_b"] == .code)
-        #expect(runs["gone"] == .strikethrough)
-        #expect(link(of: "docs", in: typeset) == URL(string: "https://swift.org"))
-        #expect(String(typeset.attributedString.characters) == "Strong em a_b gone docs *lit*")
-    }
-
-    @Test
-    func markdownLeavesWordsURLsAndMentionsAlone() throws {
-        let text = "snake_case_name @some_user_ https://x.com/a_b_c 2*3*4"
-        let typeset = PostTextTypesetter.build(PostTextInput(text: text, flavor: .markdown))
-
         #expect(String(typeset.attributedString.characters) == text)
-        #expect(typeset.attributedString.runs.allSatisfy { $0.inlinePresentationIntent == nil })
-        #expect(
-            entities(typeset) == [
-                Run("@some_user_", .mention("some_user_")),
-                Run("https://x.com/a_b_c", .url(try #require(URL(string: "https://x.com/a_b_c"))))
-            ])
     }
 
     @Test
-    func markdownEmphasisWrapsEntities() {
-        let typeset = PostTextTypesetter.build(PostTextInput(text: "**thanks @bob**", flavor: .markdown))
+    func officialRangesStyleBesideLiteralPunctuation() {
+        let text = "**not** bold, _not_ italic"
+        let styles = [TextStyleRange(range: 8..<12, isBold: true), TextStyleRange(range: 20..<26, isItalic: true)]
+        let typeset = PostTextTypesetter.build(PostTextInput(text: text, styles: styles))
+
+        let runs = typeset.attributedString.runs.map {
+            (String(typeset.attributedString[$0.range].characters), $0.inlinePresentationIntent)
+        }
+        #expect(
+            runs.elementsEqual(
+                [("**not** ", nil), ("bold", .stronglyEmphasized), (", _not_ ", nil), ("italic", .emphasized)],
+                by: ==))
+    }
+
+    @Test
+    func officialRangesWrapEntities() {
+        let styles = [TextStyleRange(range: 0..<11, isBold: true)]
+        let typeset = PostTextTypesetter.build(PostTextInput(text: "thanks @bob", styles: styles))
         let mention = typeset.attributedString.runs.first { $0[PostEntityAttribute.self] == .mention("bob") }
         #expect(mention?.inlinePresentationIntent == .stronglyEmphasized)
     }

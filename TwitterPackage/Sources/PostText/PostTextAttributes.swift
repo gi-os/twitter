@@ -37,15 +37,11 @@ package struct PostTextEmphasis: OptionSet, Hashable, Sendable {
 
     package static let bold = PostTextEmphasis(rawValue: 1 << 0)
     package static let italic = PostTextEmphasis(rawValue: 1 << 1)
-    package static let code = PostTextEmphasis(rawValue: 1 << 2)
-    package static let strikethrough = PostTextEmphasis(rawValue: 1 << 3)
 
     var presentationIntent: InlinePresentationIntent? {
         var intent: InlinePresentationIntent = []
         if contains(.bold) { intent.insert(.stronglyEmphasized) }
         if contains(.italic) { intent.insert(.emphasized) }
-        if contains(.code) { intent.insert(.code) }
-        if contains(.strikethrough) { intent.insert(.strikethrough) }
         return intent.isEmpty ? nil : intent
     }
 }

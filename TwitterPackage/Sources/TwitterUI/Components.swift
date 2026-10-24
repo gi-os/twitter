@@ -132,9 +132,9 @@ package struct TweetText: View {
     @State private var prepared: TypesetPostText?
     @Environment(\.tweetMetrics) private var metrics
 
-    /// Free text with its links; `.markdown` also reads inline Markdown (community notes, bios).
-    package init(links: [String: URL], text: String, font: Font? = nil, flavor: PostTextInput.Flavor = .post) {
-        input = PostTextInput(text: text, links: links, flavor: flavor)
+    /// Free text with its links (community notes, bios), read like a post: Markdown punctuation stays literal.
+    package init(links: [String: URL], text: String, font: Font? = nil) {
+        input = PostTextInput(text: text, links: links)
         self.font = font
     }
 
