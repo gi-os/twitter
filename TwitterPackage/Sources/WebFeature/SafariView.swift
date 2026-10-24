@@ -24,7 +24,8 @@ package struct SafariView: UIViewControllerRepresentable {
         Coordinator()
     }
 
-    package final class Coordinator: NSObject, SFSafariViewControllerDelegate {
+    @MainActor
+    package final class Coordinator: NSObject, @preconcurrency SFSafariViewControllerDelegate {
         var dismiss: DismissAction?
 
         package func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
