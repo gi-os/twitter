@@ -1,20 +1,23 @@
 import SwiftUI
 
 /// Twitter for iPad's web bar (`iPad-web-bar`), in a web panel's column bar in place of its title: a well pressed into
-/// the bar holding the page's title, with back and forward on a dark segment at its leading end once there's somewhere
-/// to go, and reload (or stop) at its trailing end.
+/// the bar holding the page's address, with back and forward on a dark segment at its leading end once there's somewhere
+/// to go, and reload (or stop) at its trailing end. The site's name sits above it, so the well stays level with the
+/// bar's buttons.
 package struct ClassicWebBar: View {
     let canGoBack: Bool
     let canGoForward: Bool
+    let address: String
     let isLoading: Bool
-    let title: String
+    let siteName: String
     let back: () -> Void
     let forward: () -> Void
     let reload: () -> Void
     let stop: () -> Void
 
     package init(
-        title: String,
+        siteName: String,
+        address: String,
         canGoBack: Bool,
         canGoForward: Bool,
         isLoading: Bool,
@@ -23,14 +26,15 @@ package struct ClassicWebBar: View {
         reload: @escaping () -> Void,
         stop: @escaping () -> Void
     ) {
+        self.address = address
         self.back = back
         self.canGoBack = canGoBack
         self.canGoForward = canGoForward
         self.forward = forward
         self.isLoading = isLoading
         self.reload = reload
+        self.siteName = siteName
         self.stop = stop
-        self.title = title
     }
 
     @Environment(\.colorScheme) private var colorScheme
@@ -43,8 +47,9 @@ package struct ClassicWebBar: View {
                     .transition(.move(edge: .leading).combined(with: .opacity))
             }
 
-            Text(title)
-                .font(.subheadline.weight(.semibold))
+            Text(address)
+                .font(.subheadline)
+                .truncationMode(.middle)
                 .foregroundStyle(Color(.webBarTitle))
                 .shadow(color: isDark ? .black.opacity(0.6) : .white.opacity(0.8), radius: 0, y: 1)
                 .lineLimit(1)
@@ -78,6 +83,16 @@ package struct ClassicWebBar: View {
         // The bar's light catching the lip below the well.
         .background {
             Capsule().fill(.white.opacity(isDark ? 0.08 : 0.9)).offset(y: 1)
+        }
+        .overlay(alignment: .top) {
+            Text(siteName)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Color(.webBarTitle))
+                .shadow(color: isDark ? .black.opacity(0.6) : .white.opacity(0.8), radius: 0, y: 1)
+                .lineLimit(1)
+                .padding(.horizontal, 20)
+                // Above the well without taking room from it, so the well centres on the bar like its buttons.
+                .alignmentGuide(.top) { $0[.bottom] + 2 }
         }
         .animation(.snappy, value: canGoBack || canGoForward)
     }
@@ -149,4 +164,3 @@ private struct WebBarReloadGlyph: View {
         .shadow(color: .white.opacity(0.8), radius: 0, y: 1)
     }
 }
-

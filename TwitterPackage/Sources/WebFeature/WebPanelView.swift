@@ -24,12 +24,12 @@ package struct WebPanelView: View {
                 LoadingBar(page: page)
             }
             .navigationTitle(page.title.isEmpty ? store.url.displayHost : page.title)
-            .navigationSubtitle(Text(verbatim: (page.url ?? store.url).displayHost))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     ClassicWebBar(
-                        title: page.title.isEmpty ? (page.url ?? store.url).displayHost : page.title,
+                        siteName: page.title.isEmpty ? (page.url ?? store.url).displayHost : page.title,
+                        address: (page.url ?? store.url).displayAddress,
                         canGoBack: !page.backForwardList.backList.isEmpty,
                         canGoForward: !page.backForwardList.forwardList.isEmpty,
                         isLoading: page.isLoading,
@@ -124,6 +124,13 @@ private struct InAppLinkDecider: WebPage.NavigationDeciding {
 }
 
 extension URL {
+    /// The address without its scheme, as Safari's bar shows it: "nytimes.com/2026/10/24/…".
+    package var displayAddress: String {
+        var address = displayHost + path()
+        if address.hasSuffix("/") { address.removeLast() }
+        return address
+    }
+
     /// The site, as people say it: "nytimes.com", not "www.nytimes.com".
     package var displayHost: String {
         guard let host = host() else { return absoluteString }

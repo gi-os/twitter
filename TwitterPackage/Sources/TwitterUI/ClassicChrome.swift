@@ -135,7 +135,7 @@ package struct ClassicColumnShadow: View {
             .offset(x: edge == .leading ? -36 : 36)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
-            .ignoresSafeArea()
+            .ignoresSafeArea(edges: .vertical)
     }
 }
 
@@ -275,8 +275,8 @@ private struct ClassicBarButton: View {
                 label
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.45), radius: 0, y: -1)
-                    .padding(.horizontal, 9)
-                    .frame(minWidth: 33, minHeight: 30)
+                    // Square, like Twitter for iPad's glyph buttons.
+                    .frame(width: 30, height: 30)
                     .background {
                         // 33 × 30 pt with rounded corners; the middle stretches.
                         Image(configuration.isPressed ? "BarButtonPressed" : "BarButton", bundle: .module)

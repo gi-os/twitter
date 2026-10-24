@@ -106,6 +106,8 @@ package struct TabStackView: View {
                     }
                 }
             }
+            // A lone root centred on the backdrop moves aside as the first column comes in.
+            .padding(.leading, layout.leadingInset)
             // Columns slide in and out; on one stack the navigation stack animates its own pushes.
             .animation(layout.canShowColumns ? ColumnLayout.slide : nil, value: store.path.ids)
         }
@@ -299,7 +301,8 @@ private struct ColumnPaper: View {
         Rectangle()
             .fill(.background)
             .overlay(alignment: .leading) { ClassicColumnShadow(edge: .leading) }
-            .ignoresSafeArea()
+            // Up under the bars, but never sideways into the side bar.
+            .ignoresSafeArea(edges: .vertical)
     }
 }
 
@@ -349,7 +352,7 @@ extension View {
                     }
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
-                    .ignoresSafeArea()
+                    .ignoresSafeArea(edges: .vertical)
             }
         }
     }
@@ -390,10 +393,12 @@ struct ColumnLayout: Equatable {
     var canShowColumns = false
     /// Width of every column while columns are shown, but a wide web panel.
     var columnWidth: CGFloat = 0
-    /// Whether the stack is laid out as columns, as opposed to everything on the root's own navigation stack, or a
-    /// root spanning both sides of a fold. On a flat display the root is a column even alone, Twitter for iPad's
-    /// sheet of paper on the backdrop, so opening something slides a column in beside it without reflowing it.
+    /// Whether the stack is laid out as columns, as opposed to everything on the root's own navigation stack, or one
+    /// root spanning a display too small to leave room beside it. Where there's room the root is a column even alone,
+    /// Twitter for iPad's sheet of paper on the backdrop: centred on a flat display, the left page across a fold.
     var showsColumns = false
+    /// How far the root sits from the leading edge while it's alone: centred on a flat display.
+    var leadingInset: CGFloat = 0
     /// Whether the strip slides between columns.
     var isScrollable = false
     /// Across a fold the strip only comes to rest with a column on each side of it, the way a book lies open.
@@ -413,7 +418,9 @@ struct ColumnLayout: Equatable {
         let width = geometry.width
         containerWidth = width
         canShowColumns = width > 0 && (geometry.fold != nil || width >= Self.minimumColumnWidth + 160)
-        guard canShowColumns, geometry.fold == nil || !wideColumns.isEmpty else { return }
+        // Alone on a display with no room for a second column beside it (the outer display), the root spans it.
+        guard canShowColumns, geometry.fold != nil || !wideColumns.isEmpty || width >= 2 * Self.minimumColumnWidth
+        else { return }
         showsColumns = true
         isScrollable = true
         if let fold = geometry.fold {
@@ -422,7 +429,10 @@ struct ColumnLayout: Equatable {
             // left of it, meeting at the fold's middle with nothing between them. Any before those are off the leading
             // edge until they're closed.
             columnWidth = ((fold.lowerBound + fold.upperBound) / 2).rounded()
-            widths = Array(repeating: columnWidth, count: wideColumns.count) + [width - columnWidth]
+            widths =
+                wideColumns.isEmpty
+                ? [columnWidth]
+                : Array(repeating: columnWidth, count: wideColumns.count) + [width - columnWidth]
             offset = max(minX(ofColumn: widths.count - 1) + widths[widths.count - 1] - width, 0)
             return
         }
@@ -435,6 +445,9 @@ struct ColumnLayout: Equatable {
         widths = [columnWidth] + wideColumns.map { $0 ? wideWidth : columnWidth }
         let stripWidth = widths.reduce(0, +)
         offset = max(stripWidth - width, 0)
+        if wideColumns.isEmpty {
+            leadingInset = ((width - columnWidth) / 2).rounded(.down)
+        }
     }
 
     func width(ofColumn column: Int) -> CGFloat {

@@ -184,21 +184,35 @@ struct TabStackCancellationTests {
 
 struct ColumnLayoutTests {
     @Test
-    func rootIsAColumnOfItsOwnOnAFlatDisplay() {
+    func rootIsACentredColumnOfItsOwnOnAFlatDisplay() {
         var geometry = ColumnGeometry()
         geometry.width = 950
         let layout = ColumnLayout(geometry: geometry, depth: 0)
         #expect(layout.showsColumns)
         #expect(layout.width(ofColumn: 0) == 475)
+        #expect(layout.leadingInset == 237)
         #expect(layout.offset == 0)
+        #expect(ColumnLayout(geometry: geometry, depth: 1).leadingInset == 0)
     }
 
     @Test
-    func rootSpansAFoldUntilSomethingOpens() {
+    func rootSpansADisplayWithNoRoomBesideIt() {
+        var geometry = ColumnGeometry()
+        geometry.width = 790
+        let layout = ColumnLayout(geometry: geometry, depth: 0)
+        #expect(layout.canShowColumns)
+        #expect(!layout.showsColumns)
+    }
+
+    @Test
+    func rootIsTheLeftPageAcrossAFold() {
         var geometry = ColumnGeometry()
         geometry.width = 951
         geometry.fold = 460...490
-        #expect(!ColumnLayout(geometry: geometry, depth: 0).showsColumns)
+        let layout = ColumnLayout(geometry: geometry, depth: 0)
+        #expect(layout.showsColumns)
+        #expect(layout.width(ofColumn: 0) == 475)
+        #expect(layout.leadingInset == 0)
     }
 
     @Test
