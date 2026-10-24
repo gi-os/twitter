@@ -206,7 +206,7 @@ private struct ProfileHeader: View {
                         Button("Unblock") { store.send(.blockButtonTapped) }
                             .buttonStyle(.classic)
                     } else if !user.blocksViewer {
-                        FollowButton(isFollowing: user.isFollowing) { store.send(.followButtonTapped) }
+                        ClassicFollowButton(isFollowing: user.isFollowing) { store.send(.followButtonTapped) }
                     }
                 }
             }
@@ -278,24 +278,6 @@ private struct Banner: View {
             .frame(maxWidth: .infinity)
             .clipped()
             .accessibilityHidden(true)
-    }
-}
-
-private struct FollowButton: View {
-    let isFollowing: Bool
-    let action: () -> Void
-
-    var body: some View {
-        // 4.x's: the bird on white to follow, on blue once following.
-        Button(action: action) {
-            HStack(spacing: 6) {
-                ClassicFollowGlyph(isFollowing: isFollowing)
-
-                Text(isFollowing ? "Following" : "Follow")
-            }
-        }
-        .buttonStyle(isFollowing ? .classicProminent : .classic)
-        .sensoryFeedback(.success, trigger: isFollowing)
     }
 }
 

@@ -65,7 +65,7 @@ private struct UserRow: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                         if user.id != viewer?.id, !user.isBlocking, !user.blocksViewer {
-                            UserFollowButton(isFollowing: user.isFollowing) {
+                            ClassicFollowButton(isFollowing: user.isFollowing) {
                                 store.send(.followButtonTapped(user.id))
                             }
                         }
@@ -106,25 +106,6 @@ private struct FollowsYouLabel: View {
             .padding(.horizontal, 4)
             .padding(.vertical, 1)
             .background(Color.twitterSecondary.opacity(0.12), in: .rect(cornerRadius: 3))
-    }
-}
-
-/// The profile header's follow button, sized for a row: 4.x's bird on white to follow, on blue once following.
-private struct UserFollowButton: View {
-    let isFollowing: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                ClassicFollowGlyph(isFollowing: isFollowing)
-
-                Text(isFollowing ? "Following" : "Follow")
-            }
-        }
-        .buttonStyle(isFollowing ? .classicProminent : .classic)
-        .sensoryFeedback(.success, trigger: isFollowing)
-        .accessibilityLabel(isFollowing ? "Following" : "Follow")
     }
 }
 

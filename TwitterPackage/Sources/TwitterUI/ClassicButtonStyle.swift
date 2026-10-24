@@ -51,17 +51,19 @@ private struct ClassicButton: View {
     }
 }
 
-/// 4.x's follow glyph: a blue bird and a plus to follow, a white bird and a check once following, for the white and
-/// blue ``ClassicButtonStyle`` buttons.
-package struct ClassicFollowGlyph: View {
+/// Follow and Following: blue to follow, the call to action; white once following.
+package struct ClassicFollowButton: View {
+    let action: () -> Void
     let isFollowing: Bool
 
-    package init(isFollowing: Bool) {
+    package init(isFollowing: Bool, action: @escaping () -> Void) {
+        self.action = action
         self.isFollowing = isFollowing
     }
 
     package var body: some View {
-        Image(isFollowing ? "FollowBirdChecked" : "FollowBird", bundle: .module)
-            .accessibilityHidden(true)
+        Button(isFollowing ? "Following" : "Follow", action: action)
+            .buttonStyle(isFollowing ? .classic : .classicProminent)
+            .sensoryFeedback(.success, trigger: isFollowing)
     }
 }

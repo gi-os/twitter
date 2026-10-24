@@ -203,12 +203,15 @@ package enum ClassicGlyph: String {
     case compose = "GlyphCompose"
     /// `ic_title_action`: a page with an arrow leaving it, for sharing.
     case action = "GlyphAction"
-    /// `more`: three dots.
-    case more = "GlyphMore"
+    /// Three dots: the system's, which sit inside a bar button where 4.x's `more` spilled out of it.
+    case more
 
     /// One color, given by the foreground style (see ``ClassicGlyphLabel``).
     package var image: Image {
-        Image(rawValue, bundle: .module).renderingMode(.template)
+        switch self {
+        case .more: Image(systemName: "ellipsis")
+        default: Image(rawValue, bundle: .module).renderingMode(.template)
+        }
     }
 }
 
