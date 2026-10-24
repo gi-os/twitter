@@ -78,7 +78,7 @@ package struct TabStack {
         case root(TabRoot.Action)
         case rootColumnPath(StackActionOf<TabStackPath>)
         case safariDismissed
-        /// The tab's button tapped while it's showing: back to the root.
+        /// The tab's button tapped while it's showing: back to the root, or at the root, its timeline to the top.
         case tabReselected
     }
 
@@ -123,8 +123,13 @@ package struct TabStack {
                     return .none
 
                 case .tabReselected:
-                    state.path.removeAll()
-                    return .none
+                    // Back to the root; already there, a timeline goes back to its top and refreshes.
+                    guard state.path.isEmpty else {
+                        state.path.removeAll()
+                        return .none
+                    }
+                    guard case .feeds = state.root else { return .none }
+                    return .send(.root(.feeds(.reselected)))
                 }
             }
             .forEach(\.path, action: \.path)

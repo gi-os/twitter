@@ -44,6 +44,9 @@ package struct FeedView<Header: View>: View {
             guard phase == .idle, let id = position.viewID(type: FeedItem.ID.self) else { return }
             store.send(.scrollStopped(topItemID: id))
         }
+        .onChange(of: store.scrollToTopRequests) {
+            withAnimation(.snappy) { position.scrollTo(edge: .top) }
+        }
         .onChange(of: store.restoringTopItemID, initial: true) {
             guard let topItemID = store.restoringTopItemID else { return }
             position.scrollTo(id: topItemID, anchor: .top)

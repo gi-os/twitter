@@ -22,6 +22,23 @@ struct TabStackFeatureTests {
     }
 
     @Test
+    func reselectingTheTabAtItsRootScrollsTheTimelineToTheTopAndRefreshes() async {
+        let store = TestStore(initialState: TabStack.State.home) {
+            TabStack()
+        } withDependencies: {
+            $0[TwitterClient.self] = .previewValue
+        }
+        store.exhaustivity = .off
+
+        await store.send(.tabReselected)
+        await store.receive(\.root.feeds.reselected)
+        await store.receive(\.root.feeds.feeds) {
+            guard case .feeds(let feeds) = $0.root else { return }
+            #expect(feeds.feeds.first?.scrollToTopRequests == 1)
+        }
+    }
+
+    @Test
     func reselectingTheTabReturnsToTheRoot() async {
         var state = TabStack.State.home
         state.path.append(Route.thread(Tweet.mocks[0]).pathState)

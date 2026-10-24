@@ -32,6 +32,8 @@ package struct FeedFeature {
         var lastTopItemID: FeedItem.ID?
         /// Where to put the reader back once cached items are on screen; cleared once the view has scrolled there.
         var restoringTopItemID: FeedItem.ID?
+        /// Counts requests to scroll back to the top (the tab tapped again); the view scrolls on each change.
+        var scrollToTopRequests = 0
         package let source: FeedSource
 
         package var id: FeedSource { source }
@@ -73,6 +75,8 @@ package struct FeedFeature {
         case quoteButtonTapped(Tweet)
         case quotesButtonTapped(Tweet)
         case refreshPulled
+        /// Its tab's button tapped while it's showing: back to the top, and fetch what's new.
+        case reselected
         case replyButtonTapped(Tweet)
         case repostButtonTapped(Tweet)
         case repostsButtonTapped(Tweet)
@@ -217,6 +221,10 @@ package struct FeedFeature {
                 return .send(.delegate(.open(.quotes(tweetID: tweet.id))))
 
             case .refreshPulled:
+                return loadPage(state: &state, isRefresh: true)
+
+            case .reselected:
+                state.scrollToTopRequests += 1
                 return loadPage(state: &state, isRefresh: true)
 
             case .replyButtonTapped(let tweet):
