@@ -217,6 +217,9 @@ private struct MediaPager: View {
 
     @Dependency(ImageLoader.self) private var loader
     @Environment(\.displayScale) private var displayScale
+    /// Driven by hand rather than bound to the selection: a lazy pager ignores a starting ID before it has laid out its
+    /// pages, and would open on the first while the caption counts the one tapped.
+    @State private var position = ScrollPosition(idType: Media.ID.self)
 
     var body: some View {
         ScrollView(.horizontal) {
@@ -236,9 +239,15 @@ private struct MediaPager: View {
             .scrollTargetLayout()
         }
         .scrollTargetBehavior(.paging)
-        .scrollPosition(id: $selection)
+        .scrollPosition($position)
         .scrollIndicators(.hidden)
         .ignoresSafeArea()
+        .onAppear {
+            if let selection { position.scrollTo(id: selection) }
+        }
+        .onChange(of: position.viewID(type: Media.ID.self)) { _, id in
+            if let id, id != selection { selection = id }
+        }
         .onChange(of: selection) { isZoomed = false }
         .task {
             loader.prefetch(
