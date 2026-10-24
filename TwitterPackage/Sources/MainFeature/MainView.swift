@@ -30,76 +30,68 @@ package struct MainView: View {
             isRegular: horizontalSizeClass == .regular && verticalSizeClass == .regular,
             isShowingColumns: !tabStack(store.selectedTab).path.isEmpty
         )
-        // Measured outside the row, which reaches into the side bar it measures.
-        ZStack {
-            // Side by side, so nothing ever runs under the sidebar.
-            HStack(spacing: 0) {
-                if placement.edge == .leading, !placement.paintsUnderSystemBar {
-                    placedSidebar(placement)
+        // Measured outside the layers, which reach into the side bar they measure.
+        ZStack(alignment: placement.edge == .trailing ? .leading : .trailing) {
+            // Behind both: the backdrop the sidebar slides back over as it widens.
+            ColumnBackdrop()
+
+            // The tabs underneath, their bar hidden for Twitter for iPad's sidebar.
+            TabView(selection: $store.selectedTab) {
+                Tab(value: .home) {
+                    TabStackView(store: tabStack(.home), title: "Home")
+                        .toolbarVisibility(.hidden, for: .tabBar)
+                } label: {
+                    TabLabel("Home", icon: .home, isSelected: store.selectedTab == .home)
                 }
 
-                // The tabs underneath, their bar hidden for Twitter for iPad's sidebar.
-                TabView(selection: $store.selectedTab) {
-                    Tab(value: .home) {
-                        TabStackView(store: tabStack(.home), title: "Home")
-                            .toolbarVisibility(.hidden, for: .tabBar)
-                    } label: {
-                        TabLabel("Home", icon: .home, isSelected: store.selectedTab == .home)
-                    }
-
-                    Tab(value: .notifications) {
-                        TabStackView(store: tabStack(.notifications), title: "Notifications")
-                            .toolbarVisibility(.hidden, for: .tabBar)
-                    } label: {
-                        TabLabel("Notifications", icon: .at, isSelected: store.selectedTab == .notifications)
-                    }
-
-                    Tab(value: .bookmarks) {
-                        TabStackView(store: tabStack(.bookmarks), title: "Bookmarks")
-                            .toolbarVisibility(.hidden, for: .tabBar)
-                    } label: {
-                        TabLabel("Bookmarks", icon: .bookmark, isSelected: store.selectedTab == .bookmarks)
-                    }
-
-                    Tab(value: .profile) {
-                        TabStackView(store: tabStack(.profile), title: "Profile")
-                            .toolbarVisibility(.hidden, for: .tabBar)
-                    } label: {
-                        TabLabel("Profile", icon: .profile, isSelected: store.selectedTab == .profile)
-                    }
-
-                    Tab(value: .explore) {
-                        TabStackView(store: tabStack(.explore), title: "Explore")
-                            .toolbarVisibility(.hidden, for: .tabBar)
-                    } label: {
-                        TabLabel("Explore", icon: .hash, isSelected: store.selectedTab == .explore)
-                    }
+                Tab(value: .notifications) {
+                    TabStackView(store: tabStack(.notifications), title: "Notifications")
+                        .toolbarVisibility(.hidden, for: .tabBar)
+                } label: {
+                    TabLabel("Notifications", icon: .at, isSelected: store.selectedTab == .notifications)
                 }
-                .tabViewStyle(.tabBarOnly)
-                // Where the sidebar is painted along iPhone Duo's own side bar, the system's vertical bar carries
-                // compose and back; elsewhere the sidebar does.
-                .environment(\.hasClassicSidebar, !placement.paintsUnderSystemBar)
-                .environment(\.classicSideBarTabs, placement.paintsUnderSystemBar ? AnyView(tabStrip) : nil)
-                // The columns lay out for the width they'll have once the sidebar has settled, not the width it's
-                // still animating away from, so opening a column reflows them once.
-                .environment(\.columnStripWidth, placement.stripWidth)
-                // Down past the home indicator, as a tab view is: the tabs keep their own content clear of it. The
-                // sidebar beside them keeps clear of it and of the camera itself.
-                .ignoresSafeArea(.container, edges: .bottom)
 
-                if placement.edge == .trailing, !placement.paintsUnderSystemBar {
-                    placedSidebar(placement)
+                Tab(value: .bookmarks) {
+                    TabStackView(store: tabStack(.bookmarks), title: "Bookmarks")
+                        .toolbarVisibility(.hidden, for: .tabBar)
+                } label: {
+                    TabLabel("Bookmarks", icon: .bookmark, isSelected: store.selectedTab == .bookmarks)
+                }
+
+                Tab(value: .profile) {
+                    TabStackView(store: tabStack(.profile), title: "Profile")
+                        .toolbarVisibility(.hidden, for: .tabBar)
+                } label: {
+                    TabLabel("Profile", icon: .profile, isSelected: store.selectedTab == .profile)
+                }
+
+                Tab(value: .explore) {
+                    TabStackView(store: tabStack(.explore), title: "Explore")
+                        .toolbarVisibility(.hidden, for: .tabBar)
+                } label: {
+                    TabLabel("Explore", icon: .hash, isSelected: store.selectedTab == .explore)
                 }
             }
-            // Sideways into the system's side bar, which the sidebar fills.
-            .ignoresSafeArea(
-                .container,
-                edges: placement.isInSystemSideBar && !placement.paintsUnderSystemBar
-                    ? (placement.edge == .leading ? .leading : .trailing) : []
-            )
+            .tabViewStyle(.tabBarOnly)
+            .environment(\.hasClassicSidebar, true)
+            // At the width they'll have once the sidebar has settled, straight away: the sidebar animates over them
+            // rather than squeezing them a little every frame, so opening a column lays the columns out once.
+            .frame(width: placement.stripWidth)
+            .environment(\.columnStripWidth, placement.stripWidth)
+            // Down past the home indicator, as a tab view is: the tabs keep their own content clear of it. The
+            // sidebar keeps clear of it and of the camera itself.
+            .ignoresSafeArea(.container, edges: .bottom)
+
+            placedSidebar(placement)
+                .frame(maxWidth: .infinity, alignment: placement.edge == .trailing ? .trailing : .leading)
+                // In step with the columns sliding as one opens or closes.
+                .animation(TabStackView.columnSlide, value: placement)
         }
-        // In step with the columns sliding as one opens or closes.
-        .animation(TabStackView.columnSlide, value: placement)
+        // Sideways into the system's side bar, which the sidebar fills.
+        .ignoresSafeArea(
+            .container,
+            edges: placement.isInSystemSideBar ? (placement.edge == .leading ? .leading : .trailing) : []
+        )
         .onGeometryChange(for: SidebarGeometry.self) { proxy in
             SidebarGeometry(proxy: proxy)
         } action: { geometry in
@@ -154,19 +146,6 @@ package struct MainView: View {
         ]
     }
 
-    /// The tabs alone, for painting along the system's side bar.
-    private var tabStrip: some View {
-        ClassicSidebar(
-            tabs: Self.tabs,
-            selection: $store.selectedTab,
-            isExpanded: false,
-            centerOffset: -5,
-            compose: nil,
-            reselect: { tabStack($0).send(.tabReselected) },
-            actions: { EmptyView() }
-        )
-    }
-
     private func tabStack(_ tab: MainFeature.Tab) -> StoreOf<TabStack> {
         switch tab {
         case .bookmarks: store.scope(state: \.bookmarks, action: \.bookmarks)
@@ -209,9 +188,6 @@ private struct SidebarPlacement: Equatable {
     var isExpanded = false
     var isInSystemSideBar = false
     var statusBarHeight: CGFloat = 0
-    /// Collapsed in iPhone Duo's own side bar: the tabs are painted along it, under the system's vertical bar, which
-    /// places compose and back clear of the status bar and camera whichever way the device is turned.
-    var paintsUnderSystemBar: Bool { isInSystemSideBar && !isExpanded }
     /// The width left for the tabs beside the sidebar.
     var stripWidth: CGFloat = 0
     var width: CGFloat = 0
@@ -235,7 +211,7 @@ private struct SidebarPlacement: Equatable {
             let sideBarWidth = inset > 0 ? inset : Self.collapsedWidth
             isExpanded = canExpand
             width = isExpanded ? max(Self.expandedWidth, sideBarWidth) : sideBarWidth
-            stripWidth = isExpanded ? geometry.width + inset - width : geometry.width
+            stripWidth = geometry.width + inset - width
         } else {
             isExpanded = canExpand
             width = isExpanded ? Self.expandedWidth : Self.collapsedWidth

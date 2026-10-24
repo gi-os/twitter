@@ -118,9 +118,10 @@ package struct TabStackView: View {
                                     insertion: .offset(
                                         x: layout.entranceOffset(ofColumn: index + 1, from: previousLayout)
                                     ),
-                                    // Fading where it is: a column sliding away after its state is gone would bring
-                                    // rows into view that report in to a column that no longer exists.
-                                    removal: .opacity
+                                    // Gone at once: every way of closing a column has already moved it off screen
+                                    // (sliding the strip back, pulling it down), and a column left in place while it
+                                    // faded would hold the root aside as it widens.
+                                    removal: .identity
                                 )
                             )
                         }
@@ -144,6 +145,9 @@ package struct TabStackView: View {
             Color.clear.classicSideBar()
         }
         .classicTabBar()
+        .onChange(of: store.closeAllColumnsRequests) {
+            requestClose(after: nil)
+        }
         .onChange(of: store.path.count) {
             shownDepth = store.path.count
         }
@@ -287,12 +291,18 @@ private struct ColumnStrip<Content: View>: View {
         .transaction(value: newestColumn) { $0.scrollContentOffsetAdjustmentBehavior = .disabled }
         // A newly opened column slides in at the trailing edge; closing them slides back.
         .onChange(of: newestColumn) {
+            // With the last column gone the root is laid out alone at once, at the start of the strip; sliding there
+            // would show it still scrolled aside.
+            guard newestColumn != nil else {
+                position.scrollTo(x: 0)
+                return
+            }
             withAnimation(ColumnLayout.slide) { position.scrollTo(x: layout.offset) }
         }
-        // Folding, unfolding, turning and the sidebar changing width keep the newest column at the trailing edge,
-        // sliding with everything else rather than jumping.
-        .onChange(of: geometry) {
-            withAnimation(ColumnLayout.slide) { position.scrollTo(x: layout.offset) }
+        // Folding, unfolding and turning keep the newest column at the trailing edge, without animating. Only what
+        // lays the columns out counts: the margins and corners measured alongside don't move them.
+        .onChange(of: ColumnStripMetrics(width: geometry.width, fold: geometry.fold)) {
+            position.scrollTo(x: layout.offset)
         }
         .onChange(of: closing) {
             guard let closing else { return }
@@ -483,13 +493,13 @@ private struct StackedColumn: View {
     }
 }
 
-/// Compose, the prominent action, on the frontmost column: at the top of iPhone Duo's vertical bar where there is
-/// one, which keeps it clear of the status bar and camera wherever they are.
+/// Compose, on the frontmost column of a window without a sidebar (a post or profile in a window of its own): in
+/// iPhone Duo's side bar where there is one, never in the column's own bar.
 private struct ComposeToolbarItem: ToolbarContent {
     let compose: () -> Void
 
     var body: some ToolbarContent {
-        ToolbarItem(placement: .topBarPinnedTrailing) {
+        ToolbarItem(placement: .bottomBar) {
             Button(action: compose) {
                 ClassicGlyphLabel("New Post", glyph: .compose)
             }
@@ -782,4 +792,10 @@ package struct SidebarBackButton: View {
 extension EnvironmentValues {
     /// The width the column strip is settling to, when its window knows it before the strip can measure it.
     @Entry package var columnStripWidth: CGFloat? = nil
+}
+
+/// What the strip's column layout depends on.
+private struct ColumnStripMetrics: Equatable {
+    var width: CGFloat
+    var fold: ClosedRange<CGFloat>?
 }

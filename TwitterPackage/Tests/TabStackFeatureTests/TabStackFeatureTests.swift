@@ -29,6 +29,20 @@ struct TabStackFeatureTests {
     }
 
     @Test
+    func reselectingTheTabWithColumnsAsksTheViewToCloseThem() async {
+        var state = TabStack.State.home
+        state.canShowColumns = true
+        state.path.append(Route.thread(Tweet.mocks[0]).pathState)
+        let store = TestStore(initialState: state) {
+            TabStack()
+        }
+
+        await store.send(.tabReselected) {
+            $0.closeAllColumnsRequests = 1
+        }
+    }
+
+    @Test
     func reselectingTheTabReturnsToTheRoot() async {
         var state = TabStack.State.home
         state.path.append(Route.thread(Tweet.mocks[0]).pathState)

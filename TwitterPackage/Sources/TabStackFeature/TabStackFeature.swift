@@ -47,6 +47,8 @@ package struct TabStack {
         /// Whether the display is wide enough to lay what's opened out as columns. Without columns a web page opens in
         /// Safari's view, as on iPhone, rather than as a screen on the stack.
         var canShowColumns = false
+        /// Counts requests to close every column, which the view slides away before removing.
+        package var closeAllColumnsRequests = 0
         package var path = StackState<TabStackPath.State>()
         var root: TabRoot.State
         /// Always empty: the root column's stack binds to this while the path is shown in a separate detail column,
@@ -119,9 +121,14 @@ package struct TabStack {
                 return .none
 
             case .tabReselected:
-                // Back to the root; already there, a timeline goes back to its top and refreshes.
+                // Back to the root; already there, a timeline goes back to its top and refreshes. Columns slide back
+                // to the root before they close, as a column's Close does; a stack just pops.
                 guard state.path.isEmpty else {
-                    state.path.removeAll()
+                    if state.canShowColumns {
+                        state.closeAllColumnsRequests += 1
+                    } else {
+                        state.path.removeAll()
+                    }
                     return .none
                 }
                 guard case .feeds = state.root else { return .none }

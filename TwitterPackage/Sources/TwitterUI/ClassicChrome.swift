@@ -26,9 +26,8 @@ extension View {
     }
 
     /// Twitter 4.x's tab bar turned on its side, filling the leading and trailing safe areas: where iPhone Duo's side
-    /// bar keeps the status bar and the window's own vertical bar (compose, back), with the window's tabs
-    /// (``EnvironmentValues/classicSideBarTabs``) along it. Draws nothing where there are no side insets. Apply it below
-    /// the navigation stack's bars (inside its content), so the system's bar items sit on top of it.
+    /// bar keeps the status bar and the window's own vertical bar. Draws nothing where there are no side insets. Apply
+    /// it below the navigation stack's bars (inside its content), so the system's bar items sit on top of it.
     package func classicSideBar() -> some View {
         modifier(ClassicSideBarModifier())
     }
@@ -50,8 +49,6 @@ package enum ClassicChrome {
 }
 
 private struct ClassicSideBarModifier: ViewModifier {
-    @Environment(\.classicSideBarTabs) private var tabs
-
     func body(content: Content) -> some View {
         content.overlay {
             GeometryReader { proxy in
@@ -65,22 +62,12 @@ private struct ClassicSideBarModifier: ViewModifier {
 
                     ClassicSideBarFill(hairlineEdge: .leading)
                         .allowsHitTesting(false)
-                        .overlay {
-                            if proxy.safeAreaInsets.trailing > 0, let tabs {
-                                tabs
-                            }
-                        }
                         .frame(width: proxy.safeAreaInsets.trailing)
                 }
                 .ignoresSafeArea()
             }
         }
     }
-}
-
-extension EnvironmentValues {
-    /// The window's tabs, drawn along iPhone Duo's side bar by ``View/classicSideBar()`` where the system keeps one.
-    @Entry package var classicSideBarTabs: AnyView? = nil
 }
 
 /// `bg_tab_bar` turned on its side: a black hairline against the content, then charcoal darkening away from it.
