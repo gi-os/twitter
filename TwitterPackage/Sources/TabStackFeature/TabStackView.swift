@@ -138,6 +138,8 @@ package struct TabStackView: View {
         }
         .padding(.leading, cardMargins?.leading ?? 0)
         .padding(.trailing, cardMargins?.trailing ?? 0)
+        // Easing in and out as the root is left alone or joined.
+        .animation(ColumnLayout.slide, value: store.path.isEmpty)
         .background {
             if layout.canShowColumns { ColumnBackdrop() }
 
@@ -177,11 +179,13 @@ package struct TabStackView: View {
         // corners clear the display's.
         let leading = ColumnCard.clearance(from: corners.topLeading)
         let trailing = ColumnCard.clearance(from: corners.topTrailing)
+        // A root alone on a flat display sits further in, a sheet on the desk rather than across it.
+        let sideMargin: CGFloat = store.path.isEmpty && measuredGeometry.fold == nil ? 2 : 1
         return EdgeInsets(
             top: max(safeArea.top + margins.top, safeArea.bottom + margins.bottom, leading, trailing),
-            leading: max(margins.leading, leading),
+            leading: max(margins.leading * sideMargin, leading),
             bottom: 0,
-            trailing: max(margins.trailing, trailing)
+            trailing: max(margins.trailing * sideMargin, trailing)
         )
     }
 
