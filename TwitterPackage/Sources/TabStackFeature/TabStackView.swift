@@ -168,13 +168,17 @@ package struct TabStackView: View {
         else { return nil }
         let margins = measuredGeometry.margins
         let safeArea = measuredGeometry.safeArea
+        let corners = measuredGeometry.corners
         // Sideways by the container's margins; down from the top as far as the bottom keeps clear (the home
-        // indicator), or the top itself if that's further (a status bar).
+        // indicator), or the top itself if that's further (a status bar); and always far enough in that the card's
+        // corners clear the display's.
+        let leading = ColumnCard.clearance(from: corners.topLeading)
+        let trailing = ColumnCard.clearance(from: corners.topTrailing)
         return EdgeInsets(
-            top: max(safeArea.top + margins.top, safeArea.bottom + margins.bottom),
-            leading: margins.leading,
+            top: max(safeArea.top + margins.top, safeArea.bottom + margins.bottom, leading, trailing),
+            leading: max(margins.leading, leading),
             bottom: 0,
-            trailing: margins.trailing
+            trailing: max(margins.trailing, trailing)
         )
     }
 
@@ -415,13 +419,26 @@ private struct PullDownToClose: ViewModifier {
     }
 }
 
-/// Shows a column as a card on the backdrop: sharp rounded top corners where the strip's margins have set it down.
+/// Shows a column as a card on the backdrop: sharp rounded top corners where the strip's margins have set it down,
+/// and open at the bottom, where the column runs on under the home indicator.
 private struct ColumnCard: ViewModifier {
+    static let cornerRadius: CGFloat = 4
+
     let isEnabled: Bool
 
     func body(content: Content) -> some View {
-        content.clipShape(
-            UnevenRoundedRectangle(topLeadingRadius: isEnabled ? 4 : 0, topTrailingRadius: isEnabled ? 4 : 0))
+        let radius = isEnabled ? Self.cornerRadius : 0
+        content.mask {
+            UnevenRoundedRectangle(topLeadingRadius: radius, topTrailingRadius: radius)
+                .ignoresSafeArea(edges: .bottom)
+        }
+    }
+
+    /// How far in from both edges a card's corner sits so a container corner reaching `corner` in doesn't clip it:
+    /// the card's small arc lies inside the container's larger one along the diagonal.
+    static func clearance(from corner: CGSize) -> CGFloat {
+        let containerRadius = min(corner.width, corner.height)
+        return (max(containerRadius - cornerRadius, 0) * (1 - 1 / 2.squareRoot())).rounded(.up)
     }
 }
 
@@ -528,6 +545,8 @@ struct ColumnGeometry: Equatable {
     /// area, and the safe area itself.
     var margins = EdgeInsets()
     var safeArea = EdgeInsets()
+    /// How far the container's own rounded corners reach in (the display's, where this meets them).
+    var corners = RectangleCornerInsets()
     var width: CGFloat = 0
 
     init() {}
@@ -536,6 +555,7 @@ struct ColumnGeometry: Equatable {
         width = proxy.size.width
         margins = proxy.contentMargins(for: .container)
         safeArea = proxy.safeAreaInsets
+        corners = proxy.containerCornerInsets
         let division = proxy.reservedRegions(kind: .division)
             .first { $0.frame.height > $0.frame.width }
         if let division, division.frame.minX > 0, division.frame.maxX < width {
