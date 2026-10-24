@@ -633,18 +633,13 @@ package struct NotificationRow: View {
                 .frame(width: 44, alignment: .trailing)
 
             VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: -8) {
+                // Side by side, each its own square, as 4.x showed who it was.
+                HStack(spacing: 4) {
                     ForEach(notification.users.prefix(8)) { user in
                         Button {
                             store.send(.authorTapped(user))
                         } label: {
-                            Avatar(user: user, size: 28)
-                                .padding(2)
-                                .background(
-                                    .background,
-                                    in: RoundedRectangle(
-                                        cornerRadius: user.hasSquareAvatar ? 32 / 5 : 32 / 2)
-                                )
+                            Avatar(user: user, size: 32)
                         }
                         .buttonStyle(.plain)
                         .profilePreview(for: user) { store.send(.authorTapped(user)) }
