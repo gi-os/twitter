@@ -16,15 +16,16 @@ package struct ClassicSegmentedControl<Value: Hashable>: View {
     package var body: some View {
         let palette = Palette()
         let shape = RoundedRectangle(cornerRadius: 6)
-        HStack(spacing: 0) {
+        EqualWidths {
             ForEach(options.indices, id: \.self) { index in
                 let option = options[index]
-                if index > 0 {
-                    palette.divider.frame(width: 1)
-                }
-
                 ClassicSegment(title: title(option), isSelected: option == selection, palette: palette) {
                     selection = option
+                }
+                .overlay(alignment: .leading) {
+                    if index > 0 {
+                        palette.divider.frame(width: 1)
+                    }
                 }
             }
         }
@@ -40,6 +41,29 @@ package struct ClassicSegmentedControl<Value: Hashable>: View {
             shape.fill(palette.highlight).offset(y: 1)
         }
         .sensoryFeedback(.selection, trigger: selection)
+    }
+}
+
+/// Segments side by side, all as wide as the widest needs, so none is cut short where the control is given only the
+/// room it asks for (in a navigation bar, say); offered more, they share it equally.
+private struct EqualWidths: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        let needed = (sizes.map(\.width).max() ?? 0) * CGFloat(subviews.count)
+        let height = sizes.map(\.height).max() ?? 0
+        let width = proposal.width.flatMap { $0.isFinite ? max($0, needed) : nil } ?? needed
+        return CGSize(width: width, height: proposal.height.flatMap { $0.isFinite ? $0 : nil } ?? height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard !subviews.isEmpty else { return }
+        let width = bounds.width / CGFloat(subviews.count)
+        for (index, subview) in subviews.enumerated() {
+            subview.place(
+                at: CGPoint(x: bounds.minX + CGFloat(index) * width, y: bounds.minY),
+                proposal: ProposedViewSize(width: width, height: bounds.height)
+            )
+        }
     }
 }
 

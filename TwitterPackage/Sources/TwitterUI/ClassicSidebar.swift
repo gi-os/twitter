@@ -24,6 +24,9 @@ package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
     let tabs: [ClassicSidebarTab<ID>]
     /// Room left at the top for the status bar, where the system keeps it in the side bar.
     let topInset: CGFloat
+    /// How far the content's centre line sits from the sidebar's own: in iPhone Duo's side bar, the status bar is
+    /// centred a little in from the display's rounded corner, and the sidebar lines up under it.
+    let centerOffset: CGFloat
     @Binding var selection: ID
     let compose: () -> Void
     let reselect: (ID) -> Void
@@ -35,6 +38,7 @@ package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
         edge: HorizontalEdge = .trailing,
         isExpanded: Bool,
         topInset: CGFloat = 0,
+        centerOffset: CGFloat = 0,
         compose: @escaping () -> Void,
         reselect: @escaping (ID) -> Void,
         @ViewBuilder actions: () -> Actions
@@ -47,6 +51,7 @@ package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
         _selection = selection
         self.tabs = tabs
         self.topInset = topInset
+        self.centerOffset = centerOffset
     }
 
     package var body: some View {
@@ -84,7 +89,9 @@ package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
             }
             .padding(.bottom, 12)
         }
-        .padding(.horizontal, isExpanded ? 12 : 6)
+        // A negative offset moves the content toward the leading edge.
+        .padding(.leading, (isExpanded ? 12 : 6) + max(centerOffset, 0) * 2)
+        .padding(.trailing, (isExpanded ? 12 : 6) + max(-centerOffset, 0) * 2)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
             ClassicSidebarBackground(contentEdge: edge == .trailing ? .leading : .trailing, castsShadow: isExpanded)
@@ -93,8 +100,8 @@ package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
     }
 }
 
-/// Compose, the one action that matters most: Twitter for iPad's blue bar button (`iPad-btn_title_bar_rect_done`)
-/// with the glyph in white, pressed into it; expanded, it says "New Post" beside the glyph and fills the row.
+/// Compose, the one action that matters most: the app's blue button (`btn_following`, as Follow is) with the glyph in
+/// white, the size of a tab; expanded, it says "New Post" beside the glyph and fills the row.
 private struct ClassicComposeButtonStyle: ButtonStyle {
     let isExpanded: Bool
 
@@ -111,13 +118,13 @@ private struct ClassicComposeButtonStyle: ButtonStyle {
         .shadow(color: .black.opacity(0.45), radius: 0, y: -1)
         .lineLimit(1)
         .padding(.horizontal, 10)
-        .frame(maxWidth: isExpanded ? .infinity : nil, minHeight: 36)
-        .frame(minWidth: 44)
+        .frame(maxWidth: isExpanded ? .infinity : 56, minHeight: 44)
         .background {
-            // 33 × 30 pt with rounded corners; the middle stretches.
-            Image(configuration.isPressed ? "BarButtonProminentPressed" : "BarButtonProminent", bundle: .module)
-                .resizable(capInsets: EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
+            // 11 × 31 pt with rounded ends; the point-wide middle stretches.
+            Image("ButtonFollowing", bundle: .module)
+                .resizable(capInsets: EdgeInsets(top: 15, leading: 5, bottom: 15, trailing: 5))
         }
+        .brightness(configuration.isPressed ? -0.12 : 0)
         .contentShape(.rect)
     }
 }
@@ -194,12 +201,7 @@ private struct ClassicSidebarBackground: View {
 }
 
 extension EnvironmentValues {
-    /// Whether timeline action bars count views where they fit; off on the outer display, where every post's bar is
-    /// better for the room.
-    @Entry package var showsViewCounts = true
-
-    /// Whether the window's ``ClassicSidebar`` carries the frontmost column's actions (and compose), so that column
-    /// leaves them out of its own bar.
+    /// Whether the window has a ``ClassicSidebar``, which carries compose; columns keep their own menus in their bars.
     @Entry package var hasClassicSidebar = false
 }
 
@@ -233,8 +235,8 @@ package struct ClassicColumnMenu<Items: View>: View {
     }
 }
 
-/// A column's "…" menu in its own bar, unless it's the frontmost column of a window whose ``ClassicSidebar`` carries
-/// it instead. In a window without one, the frontmost column's menu goes to iPhone Duo's side bar where there is one.
+/// A column's "…" menu: in its own bar in a window with a ``ClassicSidebar``. In a window without one, the frontmost
+/// column's menu goes to iPhone Duo's side bar where there is one.
 package struct ClassicColumnMenuToolbarItem<Items: View>: ToolbarContent {
     let glyph: ClassicGlyph
     let hasClassicSidebar: Bool
@@ -257,7 +259,15 @@ package struct ClassicColumnMenuToolbarItem<Items: View>: ToolbarContent {
     }
 
     package var body: some ToolbarContent {
-        if !(isFrontmostColumn && hasClassicSidebar) {
+        if hasClassicSidebar {
+            // Always in its own bar: every column carries its own, wherever it is in the stack.
+            ToolbarItem(placement: .topBarTrailing) {
+                ClassicColumnMenu(title, glyph: glyph, isOnSideBar: false) {
+                    items
+                }
+            }
+            .sharedBackgroundVisibility(.hidden)
+        } else {
             ToolbarItem(placement: .classicSideBar(isFrontmostColumn: isFrontmostColumn)) {
                 ClassicColumnMenu(title, glyph: glyph, isOnSideBar: isFrontmostColumn) {
                     items

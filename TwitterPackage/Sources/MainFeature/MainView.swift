@@ -12,7 +12,9 @@ package struct MainView: View {
     /// Per-window, so each main window reopens on the tab it was showing.
     @SceneStorage("selectedTab") private var savedTab = MainFeature.Tab.home
     @State private var sidebarGeometry = SidebarGeometry()
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.toolbarVerticalEdge) private var toolbarVerticalEdge
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     #if DEBUG
         @Environment(\.openWindow) private var openWindow
     #endif
@@ -25,6 +27,7 @@ package struct MainView: View {
         let placement = SidebarPlacement(
             geometry: sidebarGeometry,
             verticalBarEdge: toolbarVerticalEdge,
+            isRegular: horizontalSizeClass == .regular && verticalSizeClass == .regular,
             isShowingColumns: !tabStack(store.selectedTab).path.isEmpty
         )
         // Measured outside the row, which reaches into the side bar it measures.
@@ -74,18 +77,21 @@ package struct MainView: View {
                 }
                 .tabViewStyle(.tabBarOnly)
                 .environment(\.hasClassicSidebar, true)
-                .environment(\.showsViewCounts, placement.isInnerDisplay)
+                // The columns lay out for the width they'll have once the sidebar has settled, not the width it's
+                // still animating away from, so opening a column reflows them once.
+                .environment(\.columnStripWidth, placement.stripWidth)
+                // Down past the home indicator, as a tab view is: the tabs keep their own content clear of it. The
+                // sidebar beside them keeps clear of it and of the camera itself.
+                .ignoresSafeArea(.container, edges: .bottom)
 
                 if placement.edge == .trailing {
                     placedSidebar(placement)
                 }
             }
-            // Down past the home indicator, as a tab view is: the tabs keep their own content clear of it. Sideways
-            // only into the system's side bar, which the sidebar fills.
+            // Sideways into the system's side bar, which the sidebar fills.
             .ignoresSafeArea(
                 .container,
-                edges: placement.isInSystemSideBar
-                    ? [.bottom, placement.edge == .leading ? .leading : .trailing] : .bottom
+                edges: placement.isInSystemSideBar ? (placement.edge == .leading ? .leading : .trailing) : []
             )
         }
         // In step with the columns sliding as one opens or closes.
@@ -133,12 +139,11 @@ package struct MainView: View {
             edge: placement.edge,
             isExpanded: placement.isExpanded,
             topInset: placement.statusBarHeight,
+            centerOffset: placement.isInSystemSideBar && !placement.isExpanded ? -5 : 0,
             compose: { tabStack(store.selectedTab).send(.composeButtonTapped) },
             reselect: { tabStack($0).send(.tabReselected) }
         ) {
             SidebarBackButton(store: tabStack(store.selectedTab))
-
-            FrontmostColumnMenu(store: tabStack(store.selectedTab))
         }
     }
 
@@ -175,29 +180,28 @@ private struct SidebarGeometry: Equatable {
 private struct SidebarPlacement: Equatable {
     /// The narrowest column worth reading beside the expanded sidebar.
     static let expandingWidth: CGFloat = 400
-    /// The outer display's shorter side is under this, the inner display's well over it.
-    static let innerDisplayMinimumSide: CGFloat = 560
     static let collapsedWidth: CGFloat = 72
     static let expandedWidth: CGFloat = 220
-    /// The status bar at the top of iPhone Duo's side bar.
-    static let systemStatusBarHeight: CGFloat = 170
+    /// The status bar at the top of iPhone Duo's side bar: the sidebar's first button goes just under it.
+    static let systemStatusBarHeight: CGFloat = 104
 
     var edge = HorizontalEdge.trailing
     var isExpanded = false
-    var isInnerDisplay = true
     var isInSystemSideBar = false
     var statusBarHeight: CGFloat = 0
+    /// The width left for the tabs beside the sidebar.
+    var stripWidth: CGFloat = 0
     var width: CGFloat = 0
 
     /// - Parameter verticalBarEdge: Where iPhone Duo would put a vertical toolbar (`toolbarVerticalEdge`), if
     ///   anywhere: the side bar beside the content, under the camera and status bar.
-    init(geometry: SidebarGeometry, verticalBarEdge: HorizontalEdge?, isShowingColumns: Bool) {
+    /// - Parameter isRegular: Whether the window is regular both ways: room for a column and a sidebar that names its
+    ///   tabs. A compact window keeps the strip.
+    init(geometry: SidebarGeometry, verticalBarEdge: HorizontalEdge?, isRegular: Bool, isShowingColumns: Bool) {
         let windowWidth = geometry.width + geometry.leadingInset + geometry.trailingInset
-        // Expanded beside a lone column on the inner display, where there's room for both; the outer display always
-        // keeps the strip.
-        isInnerDisplay = min(windowWidth, geometry.height) >= Self.innerDisplayMinimumSide
+        // Expanded beside a lone column, where the window is regular and wide enough for both.
         let canExpand =
-            isInnerDisplay && !isShowingColumns && windowWidth >= Self.expandingWidth + Self.expandedWidth
+            isRegular && !isShowingColumns && windowWidth >= Self.expandingWidth + Self.expandedWidth
         if let verticalBarEdge {
             // In the system's side bar, under its status bar, as its own vertical bar would be: at its width, or
             // reaching past it when expanded.
@@ -208,9 +212,11 @@ private struct SidebarPlacement: Equatable {
             let sideBarWidth = inset > 0 ? inset : Self.collapsedWidth
             isExpanded = canExpand
             width = isExpanded ? max(Self.expandedWidth, sideBarWidth) : sideBarWidth
+            stripWidth = geometry.width + inset - width
         } else {
             isExpanded = canExpand
             width = isExpanded ? Self.expandedWidth : Self.collapsedWidth
+            stripWidth = geometry.width - width
         }
     }
 }

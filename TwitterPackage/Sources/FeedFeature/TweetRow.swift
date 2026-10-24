@@ -381,13 +381,14 @@ package struct EngagementBar: View {
     let engagement: Engagement
     let store: StoreOf<FeedFeature>
 
-    @Environment(\.showsViewCounts) private var showsViewCounts
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
-    /// Where a column is too narrow for every count, the view count goes first, and on the outer display it never
-    /// shows; the focused post still shows it.
+    /// Where a column is too narrow for every count, the view count goes first, and in a compact window it never
+    /// shows, leaving the room to the actions; the focused post still shows it.
     package var body: some View {
         ViewThatFits(in: .horizontal) {
-            if showsViewCounts {
+            if horizontalSizeClass == .regular, verticalSizeClass == .regular {
                 EngagementBarRow(tweet: tweet, engagement: engagement, store: store, showsViews: true)
             }
 
@@ -443,12 +444,7 @@ private struct EngagementBarRow: View {
                     label: engagement.bookmark.isOn ? "Remove Bookmark" : "Bookmark"
                 )
 
-                ShareLink(item: tweet.url) {
-                    EngagementLabel(icon: .shareStroke, count: nil, minWidth: EngagementLabel.iconOnlyWidth)
-                        .foregroundStyle(.twitterSecondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Share")
+                ShareButton(tweet: tweet)
             }
         }
     }
@@ -486,12 +482,7 @@ private struct DetailEngagementBar: View {
                 label: engagement.bookmark.isOn ? "Remove Bookmark" : "Bookmark"
             )
 
-            ShareLink(item: tweet.url) {
-                EngagementLabel(icon: .shareStroke, count: nil, minWidth: EngagementLabel.iconOnlyWidth)
-                    .foregroundStyle(.twitterSecondary)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Share")
+            ShareButton(tweet: tweet)
         }
     }
 }
@@ -521,6 +512,32 @@ private struct RepostMenu: View {
         }
         .accessibilityLabel(engagement.repost.isOn ? "Undo Repost" : "Repost")
         .accessibilityValue(engagement.repost.count.formatted())
+    }
+}
+
+/// Shares the post; held, opens it in the official Twitter app instead, when that's installed.
+private struct ShareButton: View {
+    let tweet: Tweet
+    @State private var opensInTwitter = 0
+
+    var body: some View {
+        ShareLink(item: tweet.url) {
+            EngagementLabel(icon: .shareStroke, count: nil, minWidth: EngagementLabel.iconOnlyWidth)
+                .foregroundStyle(.twitterSecondary)
+        }
+        .buttonStyle(.plain)
+        // Ahead of the share sheet: a tap still shares, a hold doesn't.
+        .highPriorityGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in openInTwitter() })
+        .sensoryFeedback(.impact(weight: .medium), trigger: opensInTwitter)
+        .accessibilityLabel("Share")
+        .accessibilityAction(named: "Open in Twitter") { openInTwitter() }
+    }
+
+    /// The post's own link, opened only as a universal link: the Twitter app takes it, and without the app nothing
+    /// opens rather than the web page.
+    private func openInTwitter() {
+        opensInTwitter += 1
+        UIApplication.shared.open(tweet.url, options: [.universalLinksOnly: true])
     }
 }
 

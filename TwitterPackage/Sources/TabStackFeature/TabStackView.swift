@@ -34,7 +34,12 @@ package struct TabStackView: View {
     /// How columns slide in and out, for anything that should move in step with them.
     package static let columnSlide = ColumnLayout.slide
 
-    @State private var geometry = ColumnGeometry()
+    @State private var measuredGeometry = ColumnGeometry()
+    /// A column being pulled down by its bar, which the columns after it follow.
+    @State private var pull: ColumnPull?
+    @Environment(\.columnStripWidth) private var stripWidth
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     /// A Close tapped in a column: the strip slides the closed columns off before they're removed.
     @State private var closing: ColumnClosing?
     /// How many columns were open before the latest change, so a new column knows where it slides in from.
@@ -78,7 +83,9 @@ package struct TabStackView: View {
                 // The root reflows once, at its new width, rather than on every frame of the new column sliding in.
                 .transaction(value: layout.showsColumns) { $0.animation = nil }
                 .dimsUnderLeadingEdge(isEnabled: layout.showsColumns)
-                .columnCard(isEnabled: layout.showsCards)
+                .columnCard(
+                    layout.showsCards ? .column : (layout.canShowColumns && isRegular ? .lone : nil)
+                )
                 // Alone on the backdrop, the root casts onto it; opened columns cover this as they slide over.
                 .overlay(alignment: .trailing) {
                     if layout.showsColumns { ClassicColumnShadow(edge: .trailing) }
@@ -96,12 +103,12 @@ package struct TabStackView: View {
                             }
                             .frame(width: layout.width(ofColumn: index + 1))
                             .background { ColumnPaper() }
-                            // Pulled down by its bar, it goes, and every column after it with it.
-                            .swipeDownToClose {
+                            // Pulled down by its bar, it goes, and every column after it follows.
+                            .pulledDownToClose(column: index, pull: $pull) {
                                 popColumns(after: index == 0 ? nil : store.path.ids[index - 1])
                             }
                             .dimsUnderLeadingEdge(isEnabled: true)
-                            .columnCard(isEnabled: layout.showsCards)
+                            .columnCard(layout.showsCards ? .column : nil)
                             // Outside the card, onto the column it lies on.
                             .background(alignment: .leading) { ClassicColumnShadow(edge: .leading) }
                             .alreadyHereShake(trigger: store.shake.count, isActive: store.shake.column == id)
@@ -138,12 +145,23 @@ package struct TabStackView: View {
         .onGeometryChange(for: ColumnGeometry.self) { proxy in
             ColumnGeometry(proxy: proxy)
         } action: { newValue in
-            geometry = newValue
+            measuredGeometry = newValue
         }
         .fullScreenCover(item: safari) { page in
             SafariView(url: page.url)
                 .ignoresSafeArea()
         }
+    }
+
+    /// Regular both ways: room around a lone root to show it as a card.
+    private var isRegular: Bool { horizontalSizeClass == .regular && verticalSizeClass == .regular }
+
+    /// The strip as measured, at the width it's settling to when the window says so (the sidebar beside it changing
+    /// width at the same moment).
+    private var geometry: ColumnGeometry {
+        var geometry = measuredGeometry
+        if let stripWidth, stripWidth > 0 { geometry.width = stripWidth }
+        return geometry
     }
 
     /// Slides the strip so the columns after `id` are off the trailing edge, then closes them.
@@ -307,31 +325,45 @@ private struct AlreadyHereShake: ViewModifier {
     }
 }
 
-/// Pulls a column down by its bar to close it: the column follows the finger, and let go far enough (or flicked) it
-/// drops off the bottom. Only a drag that starts in the bar and heads down counts, so it never competes with scrolling
-/// or pull to refresh, and it runs alongside the bar's buttons rather than in place of them.
-private struct SwipeDownToClose: ViewModifier {
+/// A column pulled down by its bar, and how far.
+private struct ColumnPull: Equatable {
+    var column: Int
+    var offset: CGFloat
+}
+
+/// Pulls a column down by its bar to close it, and every column after it: the pulled column follows the finger and
+/// each after it trails a beat behind, so it's plain they're going together. Let go far enough (or flicked) they drop
+/// off the bottom. Only a drag that starts in the bar and heads down counts, so it never competes with scrolling or
+/// pull to refresh, and it runs alongside the bar's buttons rather than in place of them.
+private struct PullDownToClose: ViewModifier {
     /// The bar, and the status bar above it on a display that has one there.
     static let barHeight: CGFloat = 110
     static let closingDistance: CGFloat = 160
 
+    let column: Int
+    @Binding var pull: ColumnPull?
     let close: () -> Void
     @State private var isTracking = false
-    @State private var offset: CGFloat = 0
 
     func body(content: Content) -> some View {
+        let lag = pull.map { column - $0.column } ?? -1
         content
-            .offset(y: offset)
+            .offset(y: lag >= 0 ? pull?.offset ?? 0 : 0)
+            // Columns after the pulled one catch up a little later the further along they are.
+            .animation(
+                lag > 0 ? .interactiveSpring(duration: 0.3).delay(Double(lag) * 0.05) : nil,
+                value: pull?.offset
+            )
             .simultaneousGesture(
                 DragGesture(minimumDistance: 12)
                     .onChanged { value in
                         if !isTracking {
-                            guard value.startLocation.y < Self.barHeight,
+                            guard pull == nil, value.startLocation.y < Self.barHeight,
                                 value.translation.height > abs(value.translation.width)
                             else { return }
                             isTracking = true
                         }
-                        offset = max(value.translation.height, 0)
+                        pull = ColumnPull(column: column, offset: max(value.translation.height, 0))
                     }
                     .onEnded { value in
                         guard isTracking else { return }
@@ -340,30 +372,52 @@ private struct SwipeDownToClose: ViewModifier {
                             || value.predictedEndTranslation.height > 2 * Self.closingDistance
                         {
                             withAnimation(.snappy(duration: 0.25)) {
-                                offset = 1_500
+                                pull?.offset = 1_500
                             } completion: {
                                 close()
+                                pull = nil
                             }
                         } else {
-                            withAnimation(.snappy) { offset = 0 }
+                            withAnimation(.snappy) {
+                                pull?.offset = 0
+                            } completion: {
+                                pull = nil
+                            }
                         }
                     }
             )
     }
 }
 
+/// How a column sits on the backdrop as a card.
+private enum ColumnCardStyle {
+    /// One of several: dropped a little from the top of the display.
+    case column
+    /// The root alone, spanning the width: inset a little all round but the bottom.
+    case lone
+
+    var inset: EdgeInsets {
+        switch self {
+        case .column: EdgeInsets(top: 4, leading: 0, bottom: 0, trailing: 0)
+        case .lone: EdgeInsets(top: 8, leading: 8, bottom: 0, trailing: 8)
+        }
+    }
+}
+
 /// Rounds a column's top corners without clipping anything else: its bars still reach up under the status bar where
 /// it isn't a card, and its content always runs down under the home indicator.
 private struct ColumnCard: ViewModifier {
-    let isEnabled: Bool
+    let style: ColumnCardStyle?
 
     func body(content: Content) -> some View {
-        if isEnabled {
-            // Its top a few points below the display's, wherever the safe area starts, and open at the bottom.
+        if let style {
+            // Its top a few points below the display's, and open at the bottom.
             content
+                .padding(.horizontal, style.inset.leading)
                 .mask {
-                    UnevenRoundedRectangle(topLeadingRadius: 6, topTrailingRadius: 6)
-                        .padding(.top, 4)
+                    UnevenRoundedRectangle(topLeadingRadius: 4, topTrailingRadius: 4)
+                        .padding(.top, style.inset.top)
+                        .padding(.horizontal, style.inset.leading)
                         .ignoresSafeArea(edges: .vertical)
                 }
         } else {
@@ -396,13 +450,12 @@ private struct StackedColumn: View {
                 // See the root column: laid out clear of the side bar, but handed its inset anyway.
                 .ignoresSafeArea(.container, edges: .horizontal)
                 .toolbar {
-                    if isFrontmost {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Close", systemImage: "xmark", action: close)
-                                .buttonStyle(.classicBar(isOnSideBar: false))
-                        }
-                        .sharedBackgroundVisibility(.hidden)
+                    // On every opened column, closing it and those after it.
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Close", systemImage: "xmark", action: close)
+                            .buttonStyle(.classicBar(isOnSideBar: false))
                     }
+                    .sharedBackgroundVisibility(.hidden)
                 }
         }
     }
@@ -416,13 +469,15 @@ extension View {
 
     /// Darkens a column by how far it has slid under the leading edge, from where it's drawn: no state, no layout, and
     /// a plain black layer fading rather than a filter over the column's content.
-    fileprivate func swipeDownToClose(close: @escaping () -> Void) -> some View {
-        modifier(SwipeDownToClose(close: close))
+    fileprivate func pulledDownToClose(
+        column: Int, pull: Binding<ColumnPull?>, close: @escaping () -> Void
+    ) -> some View {
+        modifier(PullDownToClose(column: column, pull: pull, close: close))
     }
 
     /// Twitter for iPad's columns as cards on the backdrop: dropped a little from the top, with rounded top corners.
-    fileprivate func columnCard(isEnabled: Bool) -> some View {
-        modifier(ColumnCard(isEnabled: isEnabled))
+    fileprivate func columnCard(_ style: ColumnCardStyle?) -> some View {
+        modifier(ColumnCard(style: style))
     }
 
     fileprivate func dimsUnderLeadingEdge(isEnabled: Bool) -> some View {
@@ -686,65 +741,7 @@ package struct SidebarBackButton: View {
     }
 }
 
-/// The frontmost column's "…" menu, for a sidebar to carry: the newest column's, or the root's when nothing is open.
-package struct FrontmostColumnMenu: View {
-    let store: StoreOf<TabStack>
-
-    package init(store: StoreOf<TabStack>) {
-        self.store = store
-    }
-
-    package var body: some View {
-        if let id = store.path.ids.last, let columnStore = store.scope(state: \.path[id: id], action: \.path[id: id]) {
-            switch columnStore.case {
-            case .profile(let store):
-                ProfileColumnMenu(store: store)
-            case .thread(let store):
-                ThreadColumnMenu(store: store)
-            case .web(let store):
-                ClassicColumnMenu("Share", glyph: .action, isOnSideBar: true) {
-                    WebPanelMenuItems(store: store)
-                }
-            case .quotes, .search, .userList:
-                EmptyView()
-            }
-        } else {
-            switch store.scope(state: \.root, action: \.root).case {
-            case .profile(let store):
-                ProfileColumnMenu(store: store)
-            case .thread(let store):
-                ThreadColumnMenu(store: store)
-            case .web(let store):
-                ClassicColumnMenu("Share", glyph: .action, isOnSideBar: true) {
-                    WebPanelMenuItems(store: store)
-                }
-            case .feeds, .quotes, .search, .userList:
-                EmptyView()
-            }
-        }
-    }
-}
-
-private struct ProfileColumnMenu: View {
-    let store: StoreOf<ProfileFeature>
-
-    var body: some View {
-        if store.hasMenu {
-            ClassicColumnMenu("Account", isOnSideBar: true) {
-                ProfileMenuItems(store: store)
-            }
-        }
-    }
-}
-
-private struct ThreadColumnMenu: View {
-    let store: StoreOf<FeedFeature>
-
-    var body: some View {
-        if store.focusedTweet != nil {
-            ClassicColumnMenu("More", isOnSideBar: true) {
-                ThreadMenuItems(store: store)
-            }
-        }
-    }
+extension EnvironmentValues {
+    /// The width the column strip is settling to, when its window knows it before the strip can measure it.
+    @Entry package var columnStripWidth: CGFloat? = nil
 }
