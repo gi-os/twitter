@@ -99,7 +99,6 @@ package struct TabStackView: View {
                             StackedColumn(
                                 store: columnStore,
                                 isFrontmost: index == store.path.count - 1,
-                                close: { requestClose(after: index == 0 ? nil : store.path.ids[index - 1]) },
                                 compose: { store.send(.composeButtonTapped) }
                             )
                             .barStartsAtCardTop(cardMargins != nil)
@@ -472,7 +471,6 @@ private struct ColumnPaper: View {
 private struct StackedColumn: View {
     let store: StoreOf<TabStackPath>
     let isFrontmost: Bool
-    let close: () -> Void
     let compose: () -> Void
     @Environment(\.hasClassicSidebar) private var hasClassicSidebar
 
@@ -483,13 +481,6 @@ private struct StackedColumn: View {
                 // See the root column: laid out clear of the side bar, but handed its inset anyway.
                 .ignoresSafeArea(.container, edges: .horizontal)
                 .toolbar {
-                    // On every opened column, closing it and those after it.
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Close", systemImage: "xmark", action: close)
-                            .buttonStyle(.classicBar(isOnSideBar: false))
-                    }
-                    .sharedBackgroundVisibility(.hidden)
-
                     if !hasClassicSidebar, isFrontmost {
                         ComposeToolbarItem(compose: compose)
                     }

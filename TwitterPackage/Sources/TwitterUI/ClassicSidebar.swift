@@ -60,7 +60,6 @@ package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
             if let compose {
                 Color.clear.frame(height: topInset)
 
-
                 // Side by side when expanded, stacked in the strip, a little below the top.
                 let layout = isExpanded ? AnyLayout(HStackLayout(spacing: 8)) : AnyLayout(VStackLayout(spacing: 12))
                 layout {
@@ -272,10 +271,31 @@ package struct ClassicColumnMenuToolbarItem<Items: View>: ToolbarContent {
     package var body: some ToolbarContent {
         // Always in its own bar: every column carries its own, wherever it is in the stack.
         ToolbarItem(placement: .topBarTrailing) {
-            ClassicColumnMenu(title, glyph: glyph, isOnSideBar: false) {
-                items
+            ClassicColumnButtons {
+                ClassicColumnMenu(title, glyph: glyph, isOnSideBar: false) {
+                    items
+                }
             }
         }
         .sharedBackgroundVisibility(.hidden)
+        // The button carries its own padding; the bar's would space the column's buttons apart.
+        .contentMarginsRemoved()
+    }
+}
+
+/// A column's bar buttons, out to the content's edge (the switcher's below), past the margin the bar keeps for its own
+/// glass items.
+package struct ClassicColumnButtons<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    package init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    package var body: some View {
+        HStack(spacing: 6) {
+            content
+        }
+        .padding(.trailing, -ClassicChrome.barButtonOutset)
     }
 }

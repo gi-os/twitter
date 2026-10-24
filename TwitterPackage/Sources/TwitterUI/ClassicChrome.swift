@@ -60,6 +60,9 @@ extension EnvironmentValues {
 
 package enum ClassicChrome {
 
+    /// How far past the navigation bar's trailing margin a column's buttons sit, to line up with the content below.
+    static let barButtonOutset: CGFloat = 22
+
     /// The bottom of `bg_tab_bar`'s charcoal gradient.
     package static let tabBarColor = Color(.tabBar)
     /// A tab icon's grey, top to bottom (`ic_tab_home_default`).
@@ -263,9 +266,9 @@ package struct ClassicGlyphLabel: View {
     }
 }
 
-/// Twitter 4.x's bar buttons. On a column's silver bar, Twitter for iPad's dark rounded button
-/// (`iPad-btn_title_bar_rect`) with the glyph in white, pressed into it by a dark edge above. On the side bar, the glyph
-/// alone, embossed the way 4.x's tab icons are: grey darkening downward under a black edge, lit blue while pressed.
+/// Twitter 4.x's bar buttons, glyphs alone. On a column's silver bar, pressed into it: dark grey with the bar's light on
+/// the lip below. On the side bar, embossed the way 4.x's tab icons are: grey darkening downward under a black edge, lit
+/// blue while pressed.
 package struct ClassicBarButtonStyle: ButtonStyle {
     let isOnSideBar: Bool
 
@@ -303,16 +306,11 @@ private struct ClassicBarButton: View {
                     .shadow(color: .black.opacity(0.85), radius: 0.5, y: -1)
                     .frame(minWidth: 44, minHeight: 44)
             } else {
+                // Pressed into the silver bar: dark grey under a highlight along its lower edge, darker while pressed.
                 label
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.45), radius: 0, y: -1)
-                    // Square, like Twitter for iPad's glyph buttons.
+                    .foregroundStyle(Color(.buttonText).opacity(configuration.isPressed ? 1 : 0.75))
+                    .shadow(color: .white.opacity(0.9), radius: 0, y: 1)
                     .frame(width: 30, height: 30)
-                    .background {
-                        // 33 × 30 pt with rounded corners; the middle stretches.
-                        Image(configuration.isPressed ? "BarButtonPressed" : "BarButton", bundle: .module)
-                            .resizable(capInsets: EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
-                    }
             }
         }
         .opacity(isEnabled ? 1 : 0.45)
