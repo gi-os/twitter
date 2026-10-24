@@ -48,6 +48,8 @@ package struct ProfileFeature {
         case feeds(FeedsFeature.Action)
         case followButtonTapped
         case followFailed(isFollowing: Bool)
+        case followersButtonTapped
+        case followingButtonTapped
         case signOutButtonTapped
         case task
         case userResponse(Result<User, any Error>)
@@ -114,6 +116,14 @@ package struct ProfileFeature {
                 user.followersCount += isFollowing ? 1 : -1
                 state.user = user
                 return .none
+
+            case .followersButtonTapped:
+                guard let user = state.user else { return .none }
+                return .send(.delegate(.open(.userList(.followers(userID: user.id)))))
+
+            case .followingButtonTapped:
+                guard let user = state.user else { return .none }
+                return .send(.delegate(.open(.userList(.following(userID: user.id)))))
 
             case .signOutButtonTapped:
                 return .send(.delegate(.signOut))

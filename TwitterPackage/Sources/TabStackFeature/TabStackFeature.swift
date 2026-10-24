@@ -5,14 +5,18 @@ import Models
 import ProfileFeature
 import Routing
 import SearchFeature
+import UserListFeature
 import WebFeature
 
 @Reducer
 package enum TabRoot {
     case feeds(FeedsFeature)
     case profile(ProfileFeature)
+    /// A post's quotes: a timeline of the posts quoting it.
+    case quotes(FeedFeature)
     case search(SearchFeature)
     case thread(FeedFeature)
+    case userList(UserListFeature)
     case web(WebFeature)
 }
 
@@ -21,8 +25,11 @@ extension TabRoot.State: Equatable {}
 @Reducer
 package enum TabStackPath {
     case profile(ProfileFeature)
+    /// A post's quotes: a timeline of the posts quoting it.
+    case quotes(FeedFeature)
     case search(SearchFeature)
     case thread(FeedFeature)
+    case userList(UserListFeature)
     case web(WebFeature)
 }
 
@@ -40,7 +47,7 @@ package struct TabStack {
         /// Whether the display is wide enough to lay what's opened out as columns. Without columns a web page opens in
         /// Safari's view, as on iPhone, rather than as a screen on the stack.
         var canShowColumns = false
-        var path = StackState<TabStackPath.State>()
+        package var path = StackState<TabStackPath.State>()
         var root: TabRoot.State
         /// Always empty: the root column's stack binds to this while the path is shown in a separate detail column,
         /// so the root keeps its identity (and scroll position) as the layout moves between one and two columns.
@@ -148,6 +155,8 @@ extension TabStackPath.State {
         case (.thread(let feed), .threadID(let id)): feed.source == .thread(tweetID: id)
         case (.profile(let profile), .profile(let user)): profile.shows(screenName: user.screenName)
         case (.profile(let profile), .profileHandle(let screenName)): profile.shows(screenName: screenName)
+        case (.quotes(let feed), .quotes(let tweetID)): feed.source == .quotes(of: tweetID)
+        case (.userList(let list), .userList(let source)): list.source == source
         case (.web(let web), .web(let url)): web.shows(url)
         default: false
         }
@@ -158,7 +167,9 @@ extension TabRoot.State {
     func shows(_ route: Route) -> Bool {
         switch self {
         case .profile(let profile): TabStackPath.State.profile(profile).shows(route)
+        case .quotes(let feed): TabStackPath.State.quotes(feed).shows(route)
         case .thread(let feed): TabStackPath.State.thread(feed).shows(route)
+        case .userList(let list): TabStackPath.State.userList(list).shows(route)
         case .web(let web): TabStackPath.State.web(web).shows(route)
         case .feeds, .search: false
         }
@@ -178,6 +189,8 @@ extension Route {
             .profile(ProfileFeature.State(user: user))
         case .profileHandle(let screenName):
             .profile(ProfileFeature.State(screenName: screenName))
+        case .quotes(let tweetID):
+            .quotes(FeedFeature.State(source: .quotes(of: tweetID)))
         case .search(let query):
             .search(SearchFeature.State(submitting: query))
         case .thread(let tweet):
@@ -189,6 +202,8 @@ extension Route {
             )
         case .threadID(let id):
             .thread(FeedFeature.State(source: .thread(tweetID: id)))
+        case .userList(let source):
+            .userList(UserListFeature.State(source: source))
         case .web(let url):
             .web(WebFeature.State(url: url))
         }
@@ -198,8 +213,9 @@ extension Route {
 extension TabRoot.Action {
     package var contentDelegate: ContentDelegate? {
         switch self {
-        case .feeds(.delegate(let delegate)), .profile(.delegate(let delegate)), .search(.delegate(let delegate)),
-            .thread(.delegate(let delegate)), .web(.delegate(let delegate)):
+        case .feeds(.delegate(let delegate)), .profile(.delegate(let delegate)), .quotes(.delegate(let delegate)),
+            .search(.delegate(let delegate)), .thread(.delegate(let delegate)), .userList(.delegate(let delegate)),
+            .web(.delegate(let delegate)):
             delegate
         default:
             nil
@@ -210,8 +226,8 @@ extension TabRoot.Action {
 extension TabStackPath.Action {
     package var contentDelegate: ContentDelegate? {
         switch self {
-        case .profile(.delegate(let delegate)), .search(.delegate(let delegate)), .thread(.delegate(let delegate)),
-            .web(.delegate(let delegate)):
+        case .profile(.delegate(let delegate)), .quotes(.delegate(let delegate)), .search(.delegate(let delegate)),
+            .thread(.delegate(let delegate)), .userList(.delegate(let delegate)), .web(.delegate(let delegate)):
             delegate
         default:
             nil
@@ -245,8 +261,10 @@ extension TabStack.State {
         let root: TabRoot.State =
             switch route.route.pathState {
             case .profile(let profile): .profile(profile)
+            case .quotes(let quotes): .quotes(quotes)
             case .search(let search): .search(search)
             case .thread(let thread): .thread(thread)
+            case .userList(let list): .userList(list)
             case .web(let web): .web(web)
             }
         return Self(root: root)

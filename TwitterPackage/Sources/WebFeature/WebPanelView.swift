@@ -1,13 +1,15 @@
 import ComposableArchitecture
 import Routing
 import SwiftUI
+import TwitterUI
 import WebKit
 
-/// Twitter for iPad's web panel: the page in a column of its own, with its title and site in the bar and Safari's
-/// controls beneath it. Links to posts and profiles open as columns after it instead of loading x.com.
+/// Twitter for iPad's web panel: the page in a column of its own, with Twitter for iPad's web bar (title, back and
+/// forward, reload) in its column bar, and sharing beside it. Links to posts and profiles open as columns after it instead of loading x.com.
 package struct WebPanelView: View {
     let store: StoreOf<WebFeature>
     @State private var holder = WebPageHolder()
+    @Environment(\.isFrontmostColumn) private var isFrontmostColumn
 
     package init(store: StoreOf<WebFeature>) {
         self.store = store
@@ -25,30 +27,38 @@ package struct WebPanelView: View {
             .navigationSubtitle(Text(verbatim: (page.url ?? store.url).displayHost))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    if page.isLoading {
-                        Button("Stop", systemImage: "xmark") { page.stopLoading() }
-                    } else {
-                        Button("Reload", systemImage: "arrow.clockwise") { page.reload() }
-                    }
+                ToolbarItem(placement: .principal) {
+                    ClassicWebBar(
+                        title: page.title.isEmpty ? (page.url ?? store.url).displayHost : page.title,
+                        canGoBack: !page.backForwardList.backList.isEmpty,
+                        canGoForward: !page.backForwardList.forwardList.isEmpty,
+                        isLoading: page.isLoading,
+                        back: { if let item = page.backForwardList.backList.last { page.load(item) } },
+                        forward: { if let item = page.backForwardList.forwardList.first { page.load(item) } },
+                        reload: { page.reload() },
+                        stop: { page.stopLoading() }
+                    )
+                    .frame(maxWidth: 520)
                 }
-                ToolbarItemGroup(placement: .bottomBar) {
-                    Button("Back", systemImage: "chevron.backward") {
-                        if let item = page.backForwardList.backList.last { page.load(item) }
+                .sharedBackgroundVisibility(.hidden)
+                ToolbarItem(placement: .classicSideBar(isFrontmostColumn: isFrontmostColumn)) {
+                    Menu {
+                        ShareLink(item: page.url ?? store.url)
+                        Button("Open in Safari", systemImage: "safari") {
+                            store.send(.openInSafariButtonTapped)
+                        }
+                        Button("Copy Link", systemImage: "link") {
+                            UIPasteboard.general.url = page.url ?? store.url
+                        }
+                    } label: {
+                        ClassicGlyphLabel("Share", glyph: .action)
                     }
-                    .disabled(page.backForwardList.backList.isEmpty)
-                    Button("Forward", systemImage: "chevron.forward") {
-                        if let item = page.backForwardList.forwardList.first { page.load(item) }
-                    }
-                    .disabled(page.backForwardList.forwardList.isEmpty)
+                    .menuStyle(.button)
+                    .buttonStyle(.classicBar(isOnSideBar: isFrontmostColumn))
                 }
-                ToolbarSpacer(.flexible, placement: .bottomBar)
-                ToolbarItemGroup(placement: .bottomBar) {
-                    ShareLink(item: page.url ?? store.url)
-                    Button("Open in Safari", systemImage: "safari") {
-                        store.send(.openInSafariButtonTapped)
-                    }
-                }
+                // In iPhone Duo's side bar where there is one, with the tabs.
+                .axisBehavior(.verticalPreferred)
+                .sharedBackgroundVisibility(.hidden)
             }
             .task {
                 // Once per page: a pushed panel that reappears keeps where the reader got to.

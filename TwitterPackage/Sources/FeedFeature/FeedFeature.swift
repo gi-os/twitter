@@ -65,13 +65,17 @@ package struct FeedFeature {
         case delegate(ContentDelegate)
         case isAtTopChanged(Bool)
         case likeButtonTapped(Tweet)
+        /// Who liked a post. Only the viewer's own posts list anyone, since Twitter made likes private.
+        case likesButtonTapped(Tweet)
         case linkTapped(URL)
         case newPostsButtonTapped
         case pageResponse(Result<FeedPage, any Error>, isRefresh: Bool)
         case quoteButtonTapped(Tweet)
+        case quotesButtonTapped(Tweet)
         case refreshPulled
         case replyButtonTapped(Tweet)
         case repostButtonTapped(Tweet)
+        case repostsButtonTapped(Tweet)
         case retryButtonTapped
         case rowAppeared(FeedItem.ID)
         case scrollStopped(topItemID: FeedItem.ID)
@@ -141,6 +145,9 @@ package struct FeedFeature {
             case .likeButtonTapped(let tweet):
                 return toggle(.like, tweet: tweet, state: &state)
 
+            case .likesButtonTapped(let tweet):
+                return .send(.delegate(.open(.userList(.likers(tweetID: tweet.id)))))
+
             case .linkTapped(let url):
                 // Posts and profiles open in the app, other pages in a web panel (or Safari's view on one stack),
                 // and anything else (mail, phone numbers, other apps) goes to the system.
@@ -206,6 +213,9 @@ package struct FeedFeature {
             case .quoteButtonTapped(let tweet):
                 return .send(.delegate(.compose(Draft(quoting: tweet))))
 
+            case .quotesButtonTapped(let tweet):
+                return .send(.delegate(.open(.quotes(tweetID: tweet.id))))
+
             case .refreshPulled:
                 return loadPage(state: &state, isRefresh: true)
 
@@ -215,6 +225,9 @@ package struct FeedFeature {
 
             case .repostButtonTapped(let tweet):
                 return toggle(.repost, tweet: tweet, state: &state)
+
+            case .repostsButtonTapped(let tweet):
+                return .send(.delegate(.open(.userList(.reposters(tweetID: tweet.id)))))
 
             case .retryButtonTapped:
                 return loadPage(state: &state, isRefresh: state.items.isEmpty)

@@ -48,10 +48,10 @@ package struct DogEar: View {
 
 extension Gradient {
     fileprivate static let dogEarLike = Gradient(colors: [
-        Color(red: 1, green: 0.533, blue: 0), Color(red: 0.996, green: 0.882, blue: 0.329)
+        Color(.dogEarLikeStart), Color(.dogEarLikeEnd)
     ])
     fileprivate static let dogEarRepost = Gradient(colors: [
-        Color(red: 0.333, green: 0.533, blue: 0.2), Color(red: 0.718, green: 1, blue: 0.518)
+        Color(.dogEarRepostStart), Color(.dogEarRepostEnd)
     ])
 }
 
@@ -66,9 +66,7 @@ package struct GapGroove: View {
         Rectangle()
             .fill(
                 LinearGradient(
-                    colors: isDark
-                        ? [Color(white: 0.07), Color(white: 0.10)]
-                        : [Color(white: 0.898), Color(white: 0.839)],
+                    colors: [Color(.gapGrooveTop), Color(.gapGrooveBottom)],
                     startPoint: .top,
                     endPoint: .bottom
                 )

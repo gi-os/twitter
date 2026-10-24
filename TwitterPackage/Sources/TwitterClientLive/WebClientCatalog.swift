@@ -31,6 +31,12 @@ struct CatalogSnapshot: Codable, Sendable {
                 queryId: "3BlMtudy4N-d78ch7zTLZQ", type: "query", featureSwitches: [], fieldToggles: []),
             "CreateTweet": .init(
                 queryId: "wR5Z_lEibLvkew3tF9w-Sg", type: "mutation", featureSwitches: [], fieldToggles: []),
+            "Favoriters": .init(
+                queryId: "sY8QJWD87glnIbqjFHSRsw", type: "query", featureSwitches: [], fieldToggles: []),
+            "Followers": .init(
+                queryId: "KLLQR3852iPAj8J32VMdXQ", type: "query", featureSwitches: [], fieldToggles: []),
+            "Following": .init(
+                queryId: "nxiL6UwEf7B1K1JNGPx-Jw", type: "query", featureSwitches: [], fieldToggles: []),
             "FavoriteTweet": .init(
                 queryId: "lI07N6Otwv1PhnEgXILM7A", type: "mutation", featureSwitches: [], fieldToggles: []),
             "UnfavoriteTweet": .init(
@@ -43,6 +49,8 @@ struct CatalogSnapshot: Codable, Sendable {
                 queryId: "aoDbu3RHznuiSkQ9aNM67Q", type: "mutation", featureSwitches: [], fieldToggles: []),
             "DeleteBookmark": .init(
                 queryId: "Wlmlj2-xzyS1GN3a6cj-mQ", type: "mutation", featureSwitches: [], fieldToggles: []),
+            "Retweeters": .init(
+                queryId: "cGC7fJ_YwDrcXErhG8JHHQ", type: "query", featureSwitches: [], fieldToggles: []),
             "SearchTimeline": .init(
                 queryId: "irezafrnzav4Ulf1vDkEBg", type: "query", featureSwitches: [], fieldToggles: []),
             "UserByScreenName": .init(
@@ -65,8 +73,11 @@ extension TransactionIDGenerator {
 
 enum CatalogBuilder {
     static let webClientBase = "https://abs.twimg.com/responsive-web/client-web/"
-    /// Chunks that hold the operations the app uses but that are not in main.js.
-    static let chunkKeywords = ["bundle.HomeTimeline", "bundle.Bookmarks", "bundle.Notifications"]
+    /// Chunks that hold the operations the app uses but that are not in main.js. `bundle.TweetActivity` matches the
+    /// chunk shared with `bundle.QuoteTweetActivity`, which holds `Retweeters` and `Favoriters`.
+    static let chunkKeywords = [
+        "bundle.HomeTimeline", "bundle.Bookmarks", "bundle.Notifications", "bundle.TweetActivity"
+    ]
 
     /// Regex-scans megabytes of JavaScript, so it runs off the caller's actor.
     @concurrent static func build(fetch: @escaping @Sendable (URL) async throws -> String) async throws

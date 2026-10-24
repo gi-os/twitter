@@ -23,7 +23,8 @@ let package = Package(
         .library(name: "TwitterClient", targets: ["TwitterClient"]),
         .library(name: "TwitterClientLive", targets: ["TwitterClientLive"]),
         .library(name: "TwitterDatabase", targets: ["TwitterDatabase"]),
-        .library(name: "TwitterUI", targets: ["TwitterUI"])
+        .library(name: "TwitterUI", targets: ["TwitterUI"]),
+        .library(name: "UserListFeature", targets: ["UserListFeature"])
     ],
     dependencies: [
         .package(url: "https://github.com/pointfreeco/swift-composable-architecture", from: "1.26.2"),
@@ -117,6 +118,7 @@ let package = Package(
         .target(
             name: "SignInFeature",
             dependencies: [
+                "TwitterUI",
                 "TwitterClient",
                 .product(name: "ComposableArchitecture", package: "swift-composable-architecture")
             ]
@@ -128,7 +130,17 @@ let package = Package(
                 "ProfileFeature",
                 "SearchFeature",
                 "TwitterUI",
+                "UserListFeature",
                 "WebFeature",
+                .product(name: "ComposableArchitecture", package: "swift-composable-architecture")
+            ]
+        ),
+        .target(
+            name: "UserListFeature",
+            dependencies: [
+                "Routing",
+                "TwitterClient",
+                "TwitterUI",
                 .product(name: "ComposableArchitecture", package: "swift-composable-architecture")
             ]
         ),
@@ -136,6 +148,7 @@ let package = Package(
             name: "WebFeature",
             dependencies: [
                 "Routing",
+                "TwitterUI",
                 .product(name: "ComposableArchitecture", package: "swift-composable-architecture")
             ]
         ),
@@ -269,6 +282,12 @@ let package = Package(
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing")
             ],
             exclude: ["__Snapshots__"]
+        ),
+        .testTarget(
+            name: "UserListFeatureTests",
+            dependencies: [
+                "UserListFeature"
+            ]
         ),
         .testTarget(
             name: "TabStackFeatureTests",

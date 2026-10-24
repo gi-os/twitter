@@ -8,6 +8,7 @@ import TwitterUI
 
 package struct ProfileView: View {
     let store: StoreOf<ProfileFeature>
+    @Environment(\.isFrontmostColumn) private var isFrontmostColumn
 
     package init(store: StoreOf<ProfileFeature>) {
         self.store = store
@@ -17,6 +18,7 @@ package struct ProfileView: View {
         Group {
             if let user = store.user, user.blocksViewer || (user.isBlocking && !store.isShowingBlockedPosts) {
                 BlockedProfile(user: user, store: store)
+                    .classicTitleBar()
             } else if let feedsStore = store.scope(state: \.feeds, action: \.feeds), let user = store.user {
                 FeedsView(store: feedsStore) {
                     ProfileHeader(user: user, isViewer: store.isViewer, store: store)
@@ -28,28 +30,38 @@ package struct ProfileView: View {
                     Text(errorMessage)
                 } actions: {
                     Button("Try Again") { store.send(.task) }
-                        .buttonStyle(.glass)
+                        .buttonStyle(.classic)
                 }
+                .classicTitleBar()
             } else {
                 ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .classicTitleBar()
             }
         }
         .navigationTitle(store.user?.name ?? "@\(store.screenName)")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if store.isViewer {
-                ToolbarItem(placement: .topBarLeading) {
-                    Menu("Account", systemImage: "person.crop.circle") {
+                // In iPhone Duo's side bar where there is one, with the tabs.
+                ToolbarItem(placement: .classicSideBar(isFrontmostColumn: isFrontmostColumn)) {
+                    Menu {
                         PostRowStylePicker()
                         Divider()
                         Button("Sign Out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
                             store.send(.signOutButtonTapped)
                         }
+                    } label: {
+                        ClassicGlyphLabel("Account", glyph: .more)
                     }
+                    .menuStyle(.button)
+                    .buttonStyle(.classicBar(isOnSideBar: isFrontmostColumn))
                 }
+                .axisBehavior(.verticalPreferred)
+                .sharedBackgroundVisibility(.hidden)
             } else if let user = store.user {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu("Account", systemImage: "ellipsis") {
+                ToolbarItem(placement: .classicSideBar(isFrontmostColumn: isFrontmostColumn)) {
+                    Menu {
                         Button(
                             user.isBlocking ? "Unblock @\(user.screenName)" : "Block @\(user.screenName)",
                             systemImage: "nosign",
@@ -57,8 +69,14 @@ package struct ProfileView: View {
                         ) {
                             store.send(.blockButtonTapped)
                         }
+                    } label: {
+                        ClassicGlyphLabel("Account", glyph: .more)
                     }
+                    .menuStyle(.button)
+                    .buttonStyle(.classicBar(isOnSideBar: isFrontmostColumn))
                 }
+                .axisBehavior(.verticalPreferred)
+                .sharedBackgroundVisibility(.hidden)
             }
         }
         .task { store.send(.task) }
@@ -90,7 +108,7 @@ private struct BlockedProfile: View {
                         )
                     } actions: {
                         Button("View Posts") { store.send(.viewPostsButtonTapped) }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.classic)
                     }
                 }
             }
@@ -111,17 +129,25 @@ private struct ProfileHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            // Either picture opens full screen on a tap, and previews with its menu on a long press.
             Banner(url: user.bannerURL)
+                .opensInLightbox(user.bannerMedia, cornerRadius: 0, label: "Header photo")
                 .overlay(alignment: .bottomLeading) {
                     // The ring is a background around a smaller avatar, in the avatar's own shape, so no
                     // stroke sits over the clipped image's antialiased edge.
                     Avatar(user: user, size: avatarSize - 8)
+                        .opensInLightbox(
+                            user.avatarMedia,
+                            cornerRadius: Avatar.cornerRadius(size: avatarSize - 8, isSquare: user.hasSquareAvatar),
+                            label: "Profile photo"
+                        )
                         .padding(4)
                         .background(
                             .background,
                             in: RoundedRectangle(
-                                cornerRadius: user.hasSquareAvatar ? avatarSize / 5 : avatarSize / 2,
-                                style: .continuous)
+                                cornerRadius: Avatar.cornerRadius(size: avatarSize - 8, isSquare: user.hasSquareAvatar)
+                                    + 4
+                            )
                         )
                         .alignmentGuide(.bottom) { $0[VerticalAlignment.center] }
                         .padding(.leading, 16)
@@ -163,8 +189,7 @@ private struct ProfileHeader: View {
                 if !isViewer {
                     if user.isBlocking {
                         Button("Unblock") { store.send(.blockButtonTapped) }
-                            .buttonStyle(.glassProminent)
-                            .tint(.red)
+                            .buttonStyle(.classic)
                     } else if !user.blocksViewer {
                         FollowButton(isFollowing: user.isFollowing) { store.send(.followButtonTapped) }
                     }
@@ -185,9 +210,18 @@ private struct ProfileHeader: View {
                 .padding(.horizontal, 16)
 
             HStack(spacing: 16) {
-                ProfileCount(count: user.followingCount, label: "Following")
-                ProfileCount(count: user.followersCount, label: "Followers")
+                Button {
+                    store.send(.followingButtonTapped)
+                } label: {
+                    ProfileCount(count: user.followingCount, label: "Following")
+                }
+                Button {
+                    store.send(.followersButtonTapped)
+                } label: {
+                    ProfileCount(count: user.followersCount, label: "Followers")
+                }
             }
+            .buttonStyle(.plain)
             .font(metrics.font(.subtext1))
             .foregroundStyle(.twitterSecondary)
             .padding(.horizontal, 16)
@@ -227,7 +261,6 @@ private struct Banner: View {
             .aspectRatio(verticalSizeClass == .compact ? 4 : 3, contentMode: .fit)
             .frame(maxWidth: .infinity)
             .clipped()
-            .allowsHitTesting(false)
             .accessibilityHidden(true)
     }
 }
@@ -237,9 +270,14 @@ private struct FollowButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(isFollowing ? "Following" : "Follow", action: action)
-            .buttonStyle(.glassProminent)
-            .tint(isFollowing ? .secondary : .accentColor)
+        // 4.x's: the bird on white to follow, on blue once following.
+        Button(action: action) {
+            HStack(spacing: 6) {
+                ClassicFollowGlyph(isFollowing: isFollowing)
+                Text(isFollowing ? "Following" : "Follow")
+            }
+        }
+        .buttonStyle(isFollowing ? .classicProminent : .classic)
             .sensoryFeedback(.success, trigger: isFollowing)
     }
 }

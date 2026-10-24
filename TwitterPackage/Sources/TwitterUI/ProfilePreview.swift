@@ -95,7 +95,7 @@ package struct ProfilePreviewCard: View {
                 if let bio = user?.bio, !bio.isEmpty {
                     TweetText(links: [:], text: bio, font: TweetMetrics.standard.font(.subtext1), flavor: .markdown)
                         .lineLimit(3)
-                        .environment(\.mentionPreviewsEnabled, false)
+                        .environment(\.postTextPreviewsEnabled, false)
                 }
 
                 counts
@@ -110,15 +110,18 @@ package struct ProfilePreviewCard: View {
     }
 
     private func avatarShape(size: CGFloat) -> RoundedRectangle {
-        RoundedRectangle(cornerRadius: user?.hasSquareAvatar == true ? size / 5 : size / 2, style: .continuous)
+        RoundedRectangle(
+            cornerRadius: Avatar.cornerRadius(size: size, isSquare: user?.hasSquareAvatar == true))
     }
 
     @ViewBuilder private var avatar: some View {
         if let user {
             Avatar(user: user, size: ProfilePreviewCard.avatarSize)
         } else {
-            Circle().fill(.quaternary)
+            Image("AvatarPlaceholder", bundle: .module)
+                .resizable()
                 .frame(width: ProfilePreviewCard.avatarSize, height: ProfilePreviewCard.avatarSize)
+                .clipShape(avatarShape(size: ProfilePreviewCard.avatarSize))
         }
     }
 

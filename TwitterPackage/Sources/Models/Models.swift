@@ -63,6 +63,13 @@ package struct Media: Identifiable, Hashable, Codable, Sendable {
     }
 }
 
+extension Media {
+    /// A photo, for images the viewer shows that aren't a post's, such as a profile's avatar.
+    package init(id: String, photoURL: URL, width: Double, height: Double, altText: String? = nil) {
+        self.init(id: id, kind: .photo, previewURL: photoURL, width: width, height: height, altText: altText)
+    }
+}
+
 package struct LinkCard: Hashable, Codable, Sendable {
     package var title: String
     package var domain: String

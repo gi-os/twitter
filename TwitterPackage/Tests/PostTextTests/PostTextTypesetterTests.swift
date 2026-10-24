@@ -96,13 +96,18 @@ struct PostTextTypesetterTests {
     }
 
     @Test
-    func segmentsSplitAroundMentionsOnly() {
+    func segmentsSplitAroundEntities() {
         let typeset = PostTextTypesetter.build(PostTextInput(text: "cc @a and @b_c #tag"))
         #expect(
-            typeset.segments.map { (String($0.text.characters), $0.mention) }.elementsEqual(
-                [("cc ", nil), ("@a", "a"), (" and ", nil), ("@b_c", "b_c"), (" #tag", nil)], by: ==))
+            typeset.segments.map { (String($0.text.characters), $0.entity) }.elementsEqual(
+                [
+                    ("cc ", nil), ("@a", .mention("a")), (" and ", nil), ("@b_c", .mention("b_c")), (" ", nil),
+                    ("#tag", .hashtag("#tag"))
+                ],
+                by: ==))
+        #expect(typeset.segments.map(\.mention) == [nil, "a", nil, "b_c", nil, nil])
 
-        #expect(PostTextTypesetter.build(PostTextInput(text: "no one here #tag")).segments.isEmpty)
+        #expect(PostTextTypesetter.build(PostTextInput(text: "nothing to see here")).segments.isEmpty)
     }
 
     @Test

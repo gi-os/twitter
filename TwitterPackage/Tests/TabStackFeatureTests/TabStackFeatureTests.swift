@@ -107,6 +107,44 @@ struct TabStackFeatureTests {
     }
 
     @Test
+    func profileOpensItsFollowersAsTheNextColumnAndAFollowerAfterThat() async {
+        let followers = Route.userList(.followers(userID: User.mock.id))
+        let store = TestStore(initialState: TabStack.State.profile(viewer: .mock)) {
+            TabStack()
+        }
+        store.exhaustivity = .off
+
+        await store.send(.root(.profile(.delegate(.open(followers))))) {
+            $0.path = StackState([followers.pathState])
+        }
+        await store.send(.path(.element(id: 0, action: .userList(.delegate(.open(followers)))))) {
+            $0.shake = TabStack.ColumnShake(column: 0, count: 1)
+        }
+        await store.send(.path(.element(id: 0, action: .userList(.delegate(.open(.profile(.mockFriend))))))) {
+            $0.path.append(Route.profile(.mockFriend).pathState)
+        }
+    }
+
+    @Test
+    func quotesOpenAsALatestSearchForThePost() {
+        guard case .quotes(let feed) = Route.quotes(tweetID: "100").pathState else {
+            Issue.record("Expected a quotes column")
+            return
+        }
+        #expect(feed.source == .search(query: "quoted_tweet_id:100", latest: true))
+        #expect(TabStack.State.window(.quotes(tweetID: "100")).root.quotes?.source == feed.source)
+    }
+
+    @Test
+    func postActivityLinksOpenInTheApp() throws {
+        let base = "https://x.com/pointfreeco/status/100"
+        #expect(Route(url: try #require(URL(string: base + "/quotes"))) == .quotes(tweetID: "100"))
+        #expect(Route(url: try #require(URL(string: base + "/retweets"))) == .userList(.reposters(tweetID: "100")))
+        #expect(Route(url: try #require(URL(string: base + "/likes"))) == .userList(.likers(tweetID: "100")))
+        #expect(Route(url: try #require(URL(string: base + "/photo/1"))) == .threadID("100"))
+    }
+
+    @Test
     func composeFromRootIsForwarded() async {
         let tweet = Tweet.mocks[0]
         let store = TestStore(initialState: TabStack.State.home) {
@@ -146,9 +184,20 @@ struct TabStackCancellationTests {
 
 struct ColumnLayoutTests {
     @Test
-    func rootFillsTheWidthUntilSomethingOpens() {
+    func rootIsAColumnOfItsOwnOnAFlatDisplay() {
+        var geometry = ColumnGeometry()
+        geometry.width = 950
+        let layout = ColumnLayout(geometry: geometry, depth: 0)
+        #expect(layout.showsColumns)
+        #expect(layout.width(ofColumn: 0) == 475)
+        #expect(layout.offset == 0)
+    }
+
+    @Test
+    func rootSpansAFoldUntilSomethingOpens() {
         var geometry = ColumnGeometry()
         geometry.width = 951
+        geometry.fold = 460...490
         #expect(!ColumnLayout(geometry: geometry, depth: 0).showsColumns)
     }
 
@@ -195,9 +244,27 @@ struct ColumnLayoutTests {
         geometry.width = 951
         geometry.fold = 460...490
         let layout = ColumnLayout(geometry: geometry, depth: 1)
-        #expect(layout.columnWidth == 460)
-        #expect(layout.separatorWidth == 30)
+        // Two pages meeting at the fold's middle.
+        #expect(layout.width(ofColumn: 0) == 475)
+        #expect(layout.width(ofColumn: 1) == 476)
         #expect(layout.offset == 0)
+    }
+
+    @Test
+    func activeFoldKeepsTheNewestColumnRightOfIt() {
+        var geometry = ColumnGeometry()
+        geometry.width = 951
+        geometry.fold = 460...490
+        let layout = ColumnLayout(geometry: geometry, depth: 2)
+        #expect(layout.width(ofColumn: 1) == 475)
+        #expect(layout.width(ofColumn: 2) == 476)
+        // The first column is the page left of the fold, the newest the page right of it, and the root is off the
+        // leading edge.
+        #expect(layout.minX(ofColumn: 1) - layout.offset == 0)
+        #expect(layout.minX(ofColumn: 2) - layout.offset == 475)
+        // Slides back a page at a time, always resting with a column either side of the fold.
+        #expect(layout.isScrollable)
+        #expect(layout.snapOffsets == [0, 475])
     }
 
     @Test
@@ -217,7 +284,7 @@ struct ColumnLayoutTests {
         geometry.width = 951
         geometry.fold = 460...490
         let layout = ColumnLayout(geometry: geometry, wideColumns: [true])
-        #expect(layout.width(ofColumn: 1) == 460)
+        #expect(layout.width(ofColumn: 1) == 476)
     }
 
     @Test

@@ -4,9 +4,13 @@ import Models
 package enum Route: Hashable, Sendable {
     case profile(User)
     case profileHandle(String)
+    /// A post's quotes: posts, unlike the other lists of a post's activity, so they're a timeline of their own.
+    case quotes(tweetID: String)
     case search(String)
     case thread(Tweet)
     case threadID(String)
+    /// The accounts following or followed by a profile, or that reposted or liked a post.
+    case userList(UserListSource)
     /// A page on the web: a panel of its own beside the columns, or Safari's own view on a single stack.
     case web(URL)
 
@@ -39,6 +43,12 @@ package enum Route: Hashable, Sendable {
         case 1 where components[0].lowercased() == "search":
             guard let query = url.queryValue(for: "q") else { return nil }
             self = .search(query)
+        case 4 where components[1] == "status" && components[2].allSatisfy(\.isNumber) && components[3] == "quotes":
+            self = .quotes(tweetID: components[2])
+        case 4 where components[1] == "status" && components[2].allSatisfy(\.isNumber) && components[3] == "retweets":
+            self = .userList(.reposters(tweetID: components[2]))
+        case 4 where components[1] == "status" && components[2].allSatisfy(\.isNumber) && components[3] == "likes":
+            self = .userList(.likers(tweetID: components[2]))
         case 3... where components[1] == "status" && components[2].allSatisfy(\.isNumber):
             self = .threadID(components[2])
         default:
@@ -62,9 +72,11 @@ package enum Route: Hashable, Sendable {
         switch self {
         case .profile(let user): .profile(screenName: user.screenName.lowercased())
         case .profileHandle(let screenName): .profile(screenName: screenName.lowercased())
+        case .quotes(let tweetID): .quotes(tweetID: tweetID)
         case .search(let query): .search(query)
         case .thread(let tweet): .thread(tweetID: tweet.id)
         case .threadID(let id): .thread(tweetID: id)
+        case .userList(let source): .userList(source)
         case .web(let url): .web(url)
         }
     }
@@ -82,15 +94,19 @@ package enum Route: Hashable, Sendable {
 /// The value a standalone window is opened with and restored from.
 package enum WindowRoute: Codable, Hashable, Sendable {
     case profile(screenName: String)
+    case quotes(tweetID: String)
     case search(String)
     case thread(tweetID: String)
+    case userList(UserListSource)
     case web(URL)
 
     package var route: Route {
         switch self {
         case .profile(let screenName): .profileHandle(screenName)
+        case .quotes(let tweetID): .quotes(tweetID: tweetID)
         case .search(let query): .search(query)
         case .thread(let tweetID): .threadID(tweetID)
+        case .userList(let source): .userList(source)
         case .web(let url): .web(url)
         }
     }
@@ -109,6 +125,18 @@ package struct Draft: Equatable {
     package init(quoting: Tweet? = nil, replyingTo: Tweet? = nil) {
         self.quoting = quoting
         self.replyingTo = replyingTo
+    }
+}
+
+extension UserListSource {
+    /// The list's title: "Followers" and "Following" as on a profile, "Reposts" and "Likes" as on a post.
+    package var title: String {
+        switch self {
+        case .followers: "Followers"
+        case .following: "Following"
+        case .likers: "Likes"
+        case .reposters: "Reposts"
+        }
     }
 }
 

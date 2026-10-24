@@ -1,6 +1,7 @@
 import ComposableArchitecture
 import Models
 import SwiftUI
+import TwitterUI
 
 /// A conversation that keeps its focused post pinned to the top of the viewport.
 ///
@@ -21,6 +22,7 @@ package struct ThreadView: View {
     @State private var position = ScrollPosition(idType: FeedItem.ID.self)
     @State private var spacerHeight: CGFloat = 0
     @State private var viewportHeight: CGFloat = 0
+    @Environment(\.isFrontmostColumn) private var isFrontmostColumn
 
     package var body: some View {
         ScrollView {
@@ -73,6 +75,22 @@ package struct ThreadView: View {
             } catch {}
         }
         .feedInteractions(store: store)
+        .toolbar {
+            if let tweet = store.focusedItemID.flatMap({ store.items[id: $0]?.tweets.first }) {
+                ToolbarItem(placement: .classicSideBar(isFrontmostColumn: isFrontmostColumn)) {
+                    Menu {
+                        TweetMenu(tweet: tweet, engagement: store.engagements.engagement(for: tweet), store: store)
+                    } label: {
+                        ClassicGlyphLabel("More", glyph: .more)
+                    }
+                    .menuStyle(.button)
+                    .buttonStyle(.classicBar(isOnSideBar: isFrontmostColumn))
+                }
+                // In iPhone Duo's side bar where there is one, with the tabs.
+                .axisBehavior(.verticalPreferred)
+                .sharedBackgroundVisibility(.hidden)
+            }
+        }
     }
 }
 

@@ -17,13 +17,21 @@ package struct Avatar: View {
         self.decodeSize = decodeSize ?? size
     }
 
+    /// Twitter 4.x's avatars are rounded squares; organizations' a little squarer.
+    package static func cornerRadius(size: CGFloat, isSquare: Bool) -> CGFloat {
+        size * (isSquare ? 0.08 : 0.12)
+    }
+
     package var body: some View {
-        let shape = RoundedRectangle(cornerRadius: isSquare ? size / 5 : size / 2, style: .continuous)
+        // A hairline frame, and `ProfilePlaceholderOverWhite` until the picture arrives.
+        let shape = RoundedRectangle(
+            cornerRadius: Self.cornerRadius(size: size, isSquare: isSquare))
         RemoteImage(url: url, pointSize: decodeSize) {
-            shape.fill(.quaternary)
+            Image("AvatarPlaceholder", bundle: .module).resizable()
         }
         .frame(width: size, height: size)
         .clipShape(shape)
+        .overlay { shape.strokeBorder(.black.opacity(0.12), lineWidth: 0.5) }
         .accessibilityHidden(true)
     }
 }
@@ -109,7 +117,7 @@ package struct AuthorLine: View {
 ///
 /// The first frame draws from the typesetter's cache, or typesets inline when the text is short; long text draws as
 /// plain text in the same font (so the row doesn't change height) while it typesets off the main actor, then swaps in
-/// without animation. Long-pressing a mention previews that profile (see ``MentionPreviews``).
+/// without animation. Long-pressing a mention, tag or link previews it (see ``PostTextPreviews``).
 package struct TweetText: View {
     let input: PostTextInput
     /// Overrides the metrics' type ramp; `nil` draws `style` in Chirp at Twitter's line height.
@@ -157,8 +165,8 @@ package struct TweetText: View {
         let typeset = prepared?.input == input ? prepared : PostTextTypesetter.cachedOrInline(input)
         Group {
             if let typeset {
-                Text(mentionsTaggedIn: typeset)
-                    .modifier(MentionPreviews(typeset: typeset))
+                Text(entitiesTaggedIn: typeset)
+                    .modifier(PostTextPreviews(typeset: typeset))
             } else {
                 Text(verbatim: input.placeholderText)
                     .task(id: input) {

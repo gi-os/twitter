@@ -251,11 +251,90 @@ extension FeedPage {
                 topCursor: nil
             )
         }
+        if case .search(let query, _) = source, query.hasPrefix(FeedSource.quotesQueryPrefix) {
+            // Quotes of the post the search names, as a post's Quotes list shows them.
+            let quotedID = String(query.dropFirst(FeedSource.quotesQueryPrefix.count))
+            let quoted = (Tweet.mocks + [.mockRestricted]).first { $0.id == quotedID } ?? Tweet.mocks[0]
+            let quotes = zip(User.mockCrowd.prefix(3), ["This is the one.", "Finally!", "Saving this for later."])
+            return FeedPage(
+                items: quotes.enumerated().map { index, quote in
+                    var tweet = Tweet.mock(
+                        id: "q\(index)-\(quotedID)", author: quote.0, text: quote.1, secondsAgo: Double(index + 1) * 900)
+                    tweet.quoted = [quoted]
+                    return item(tweet)
+                },
+                bottomCursor: nil,
+                topCursor: nil
+            )
+        }
         var items = Tweet.mocks.map(item)
         items.insert(item(.mockLongPost), at: 1)
         items.insert(item(.mockPoll), at: 2)
         items.insert(.tombstone(Tombstone(id: "tweet-109", text: "This post was deleted by the post author.")), at: 3)
         items += [item(.mockCommunityNote), item(.mockRestricted), item(.mockQuotingDeleted), item(.mockFinalPoll)]
         return FeedPage(items: items, bottomCursor: nil, topCursor: nil)
+    }
+}
+
+extension User {
+    /// Enough accounts for a user list to page once: `UserPage.mock` serves them `UserPage.mockPageSize` at a time.
+    package static let mockCrowd: [User] = {
+        let people: [(name: String, screenName: String, bio: String)] = [
+            ("Loren Brichter", "lorenb", "Made Tweetie. Pull to refresh was my fault."),
+            ("Craig Hockenberry", "chockenberry", "Iconfactory. Twitterrific since 2007."),
+            ("Mike Rundle", "flyosity", "Designer and developer. Pixels, mostly."),
+            ("Becky Hansmeyer", "bhansmeyer", "Indie iOS developer."),
+            ("Brandon Williams", "mbrandonw", "Point-Free co-host. Composable things."),
+            ("Stephen Celis", "stephencelis", "Point-Free co-host."),
+            ("Marco Arment", "marcoarment", "Overcast. ATP. Coffee."),
+            ("Federico Viticci", "viticci", "MacStories. iPad everything."),
+            ("John Gruber", "gruber", "Daring Fireball."),
+            ("Sebastiaan de With", "sdw", "Halide. Kino. Icons."),
+            ("Neven Mrgan", "mrgan", "Designer at Panic. Puns available on request."),
+            ("Cabel Sasser", "cabel", "Panic co-founder. Playdate."),
+            ("Steve Troughton-Smith", "stroughtonsmith", "Apps on every platform there is."),
+            ("Jordan Morgan", "jordanmorgan10", "Spend Stack. Swift and SwiftUI."),
+            ("Natalia Panferova", "natpanferova", "SwiftUI books and talks."),
+            ("Majid Jabrayilov", "mecid", "Writing about Swift and SwiftUI weekly."),
+            ("Paul Hudson", "twostraws", "Hacking with Swift."),
+            ("Donny Wals", "donnywals", "Swift concurrency, Core Data, and books."),
+            ("Antoine van der Lee", "twannl", "SwiftLee. RocketSim."),
+            ("Kaya Thomas", "kthomas901", "Engineer. We Read Too."),
+            ("James Thomson", "jamesthomson", "PCalc. Dice by PCalc."),
+            ("Rosyna Keller", "rosyna", "Bugs, mostly."),
+            ("Ish ShaBazz", "ishabazz", "Indie developer."),
+            ("Casey Liss", "caseyliss", "Callsheet. ATP.")
+        ]
+        return people.enumerated().map { index, person in
+            User(
+                id: "\(1_000 + index)",
+                name: person.name,
+                screenName: person.screenName,
+                bio: person.bio,
+                followersCount: 1_000 * (index + 3),
+                followingCount: 100 + index * 7,
+                isVerified: index.isMultiple(of: 5),
+                isFollowing: index.isMultiple(of: 3),
+                followsViewer: index.isMultiple(of: 4)
+            )
+        }
+    }()
+}
+
+extension UserPage {
+    package static let mockPageSize = 12
+
+    /// `User.mockCrowd`, a page at a time, with Point-Free first so a list always starts with an account the viewer
+    /// follows. Lists of who liked or reposted a post are shorter than lists of followers.
+    package static func mock(_ source: UserListSource, cursor: String?) -> UserPage {
+        var everyone = [User.mockFriend, .mockBusiness, .mockGovernment] + User.mockCrowd
+        switch source {
+        case .followers, .following: break
+        case .likers, .reposters: everyone = Array(everyone.prefix(8))
+        }
+        let start = cursor.flatMap(Int.init) ?? 0
+        let end = min(start + mockPageSize, everyone.count)
+        guard start < end else { return UserPage(users: [], bottomCursor: nil) }
+        return UserPage(users: Array(everyone[start..<end]), bottomCursor: end < everyone.count ? "\(end)" : nil)
     }
 }

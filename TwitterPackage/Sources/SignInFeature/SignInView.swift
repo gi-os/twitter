@@ -2,6 +2,7 @@ import ComposableArchitecture
 import Models
 import SwiftUI
 import TwitterClient
+import TwitterUI
 import WebKit
 
 package struct SignInView: View {
@@ -27,7 +28,7 @@ package struct SignInView: View {
                         Text(errorMessage)
                     } actions: {
                         Button("Try Again") { store.send(.retryButtonTapped) }
-                            .buttonStyle(.glassProminent)
+                            .buttonStyle(.classicProminent)
                     }
                     .background(.background)
                 } else if store.isSigningIn {

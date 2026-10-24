@@ -4,19 +4,24 @@ import Synchronization
 /// Post text typeset into an attributed string: links on every entity, Twitter's bold/italic and Markdown styling as
 /// inline presentation intents, and each entity tagged with ``PostEntityAttribute``.
 package struct TypesetPostText: Equatable, Sendable {
-    /// A stretch of the text that is either all one mention or has none, so a view can tag mention runs.
+    /// A stretch of the text that is either all one entity (a mention, tag or link) or has none, so a view can tag
+    /// each entity's runs.
     package struct Segment: Equatable, Sendable {
         package let text: AttributedString
+        package let entity: PostEntity?
+
         /// The screen name, when this segment is a mention.
-        package let mention: String?
+        package var mention: String? {
+            if case .mention(let screenName) = entity { screenName } else { nil }
+        }
     }
 
     package let input: PostTextInput
     package let attributedString: AttributedString
-    /// The text split around mentions, in order; empty when it has none.
+    /// The text split around entities, in order; empty when it has none.
     package let segments: [Segment]
 
-    package var hasMentions: Bool { !segments.isEmpty }
+    package var hasEntities: Bool { !segments.isEmpty }
 
     /// Typesetting is deterministic, so equal inputs are equal outputs.
     package static func == (lhs: TypesetPostText, rhs: TypesetPostText) -> Bool {
@@ -78,9 +83,7 @@ package enum PostTextTypesetter {
         var string = AttributedString()
         var segments: [TypesetPostText.Segment] = []
         var pending = AttributedString()
-        let hasMentions = pieces.contains {
-            if case .mention = $0.entity { true } else { false }
-        }
+        let hasEntities = pieces.contains { $0.entity != nil }
 
         for piece in pieces {
             var run = AttributedString(piece.text)
@@ -92,19 +95,19 @@ package enum PostTextTypesetter {
                 run.inlinePresentationIntent = intent
             }
             string.append(run)
-            guard hasMentions else { continue }
-            if case .mention(let screenName) = piece.entity {
+            guard hasEntities else { continue }
+            if let entity = piece.entity {
                 if !pending.characters.isEmpty {
-                    segments.append(.init(text: pending, mention: nil))
+                    segments.append(.init(text: pending, entity: nil))
                     pending = AttributedString()
                 }
-                segments.append(.init(text: run, mention: screenName))
+                segments.append(.init(text: run, entity: entity))
             } else {
                 pending.append(run)
             }
         }
-        if hasMentions, !pending.characters.isEmpty {
-            segments.append(.init(text: pending, mention: nil))
+        if hasEntities, !pending.characters.isEmpty {
+            segments.append(.init(text: pending, entity: nil))
         }
         return TypesetPostText(input: input, attributedString: string, segments: segments)
     }

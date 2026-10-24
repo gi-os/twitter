@@ -6,6 +6,7 @@ import SignInFeature
 import SwiftUI
 import TwitterClient
 import TwitterClientLive
+import TwitterUI
 
 public struct AppView: View {
     @State private var store = Store(initialState: AppFeature.State()) {
@@ -35,7 +36,7 @@ private struct AppRootView: View {
                     Text(message)
                 } actions: {
                     Button("Try Again") { store.send(.retryButtonTapped) }
-                        .buttonStyle(.glassProminent)
+                        .buttonStyle(.classicProminent)
                 }
             case .launching:
                 LaunchingView()

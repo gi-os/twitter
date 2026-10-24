@@ -12,16 +12,26 @@ package struct VerificationBadgeView: View {
     }
 
     package var body: some View {
-        Image(systemName: "checkmark.seal.fill")
-            .foregroundStyle(color)
-            .accessibilityLabel(label)
+        Group {
+            if badge == .blue {
+                // Twitter 4.x's own badge, `ic_verified_default`, sized to the name it follows.
+                Image("VerifiedBadge", bundle: .module)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 15, height: 15)
+            } else {
+                Image(systemName: "checkmark.seal.fill")
+                    .foregroundStyle(color)
+            }
+        }
+        .accessibilityLabel(label)
     }
 
     private var color: AnyShapeStyle {
         switch badge {
         case .blue: AnyShapeStyle(Color.twitterBlue)
-        case .business: AnyShapeStyle(Color(light: 0xDCAB00, dark: 0xDCAB00))
-        case .government: AnyShapeStyle(Color(light: 0x829AAB, dark: 0x829AAB))
+        case .business: AnyShapeStyle(Color(.badgeBusiness))
+        case .government: AnyShapeStyle(Color(.badgeGovernment))
         }
     }
 
@@ -57,7 +67,7 @@ package struct AffiliateBadge: View {
                 .resizable()
                 .aspectRatio(contentMode: .fill)
                 .frame(width: size, height: size)
-                .clipShape(RoundedRectangle(cornerRadius: size / 5, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: size / 5))
                 .accessibilityElement()
                 .accessibilityLabel("Affiliated with \(label.description)")
         } else {
@@ -86,7 +96,7 @@ package struct TombstoneView: View {
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
-            .background(.fill.quaternary, in: .rect(cornerRadius: 12, style: .continuous))
+            .background(.fill.quaternary, in: .rect(cornerRadius: 12))
     }
 }
 
@@ -115,12 +125,15 @@ package struct CommunityNoteCard: View {
         VStack(alignment: .leading, spacing: 8) {
             Label(note.shortTitle ?? "Readers added context", systemImage: "person.2.fill")
                 .font(.subheadline.weight(.semibold))
+
             TweetText(links: note.links, text: note.text, font: .subheadline, flavor: .markdown)
+
             if let footer = note.footer {
                 Text(footer)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
             if let url = note.destinationURL {
                 Link("Rate this note", destination: url)
                     .font(.caption.weight(.semibold))
@@ -129,7 +142,7 @@ package struct CommunityNoteCard: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 16)
                 .strokeBorder(.quaternary)
         }
         .accessibilityElement(children: .combine)
@@ -150,7 +163,7 @@ package struct PollView: View {
                 RemoteImage(url: imageURL, pointSize: 600)
                     .frame(maxWidth: .infinity)
                     .frame(height: 160)
-                    .clipShape(.rect(cornerRadius: 12, style: .continuous))
+                    .clipShape(.rect(cornerRadius: 12))
                     .allowsHitTesting(false)
             }
             // X rejects duplicate choices, so the label is a stable identity.
@@ -195,7 +208,7 @@ private struct PollChoiceRow: View {
         .padding(.vertical, 8)
         .background(alignment: .leading) {
             GeometryReader { proxy in
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 8)
                     .fill(hasMostVotes ? AnyShapeStyle(.tint.opacity(0.3)) : AnyShapeStyle(.fill.tertiary))
                     .frame(width: max(proxy.size.width * fraction, 4))
             }

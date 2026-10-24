@@ -47,9 +47,9 @@ package struct MediaGrid: View {
                 .frame(height: media.count > 2 ? maxHeight : maxHeight * 0.66)
             }
         }
-        .clipShape(.rect(cornerRadius: Self.cornerRadius, style: .continuous))
+        .clipShape(.rect(cornerRadius: Self.cornerRadius))
         .overlay {
-            RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+            RoundedRectangle(cornerRadius: Self.cornerRadius)
                 .strokeBorder(.twitterMediaBorder, lineWidth: 1 / displayScale)
         }
         .fullScreenCover(isPresented: $isViewerPresented) {
@@ -63,17 +63,19 @@ package struct MediaGrid: View {
     }
 
     private func tile(_ item: Media) -> MediaTile {
-        MediaTile(item: item, count: media.count, zoomNamespace: zoomNamespace) {
+        MediaTile(item: item, count: media.count, link: tweet?.mediaURL(of: item), zoomNamespace: zoomNamespace) {
             viewerSelection = item.id
             isViewerPresented = true
         }
     }
 }
 
-/// One tappable tile of a `MediaGrid`, and the source the viewer zooms out of.
+/// One tappable tile of a `MediaGrid`, and the source the viewer zooms out of. Long-pressing it previews the item
+/// alone with its menu (see ``View/mediaPreview(_:link:openTitle:open:)``).
 private struct MediaTile: View {
     let item: Media
     let count: Int
+    let link: URL?
     let zoomNamespace: Namespace.ID
     let open: () -> Void
 
@@ -97,10 +99,13 @@ private struct MediaTile: View {
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        // Lifted as a rounded photo, as it's previewed, rather than as a square cut out of the grid.
+        .contentShape(.contextMenuPreview, .rect(cornerRadius: MediaGrid.cornerRadius))
+        .mediaPreview(item, link: link, open: open)
         // The viewer zooms out of, and back into, the tile it's showing.
         .matchedTransitionSource(id: item.id, in: zoomNamespace) { source in
             source.clipShape(
-                RoundedRectangle(cornerRadius: count == 1 ? MediaGrid.cornerRadius : 0, style: .continuous)
+                RoundedRectangle(cornerRadius: count == 1 ? MediaGrid.cornerRadius : 0)
             )
         }
         .accessibilityLabel(item.altText ?? (item.kind == .photo ? "Image" : "Video"))

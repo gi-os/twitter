@@ -30,7 +30,8 @@ extension TwitterClient: DependencyKey {
             setReposted: { try await store.session().setReposted($0, tweetID: $1) },
             signIn: { try await store.signIn(cookies: $0) },
             signOut: { await store.signOut() },
-            user: { try await store.session().user(screenName: $0) }
+            user: { try await store.session().user(screenName: $0) },
+            users: { source, cursor in try await store.session().users(source, cursor: cursor) }
         )
     }
 }
@@ -150,5 +151,28 @@ extension TwitterWebSession {
         case .userReplies(let userID):
             try await userReplies(userID: userID, cursor: cursor)
         }
+    }
+}
+
+extension TwitterWebSession {
+    /// The web client's user timelines. `Retweeters` and `Favoriters` ask for promoted content as x.com does (the
+    /// parser drops it); `Favoriters` only lists anyone for the viewer's own posts since likes went private.
+    func users(_ source: UserListSource, cursor: String?) async throws -> UserPage {
+        let operation: String
+        var variables: [String: JSONValue] = ["count": 20]
+        switch source {
+        case .followers(let userID), .following(let userID):
+            operation = if case .followers = source { "Followers" } else { "Following" }
+            variables["userId"] = .string(userID)
+            variables["includePromotedContent"] = false
+            variables["withGrokTranslatedBio"] = false
+        case .likers(let tweetID), .reposters(let tweetID):
+            operation = if case .likers = source { "Favoriters" } else { "Retweeters" }
+            variables["tweetId"] = .string(tweetID)
+            variables["enableRanking"] = false
+            variables["includePromotedContent"] = true
+        }
+        if let cursor { variables["cursor"] = .string(cursor) }
+        return TimelineParser.userPage(from: try await graphQL(operation, variables: variables))
     }
 }

@@ -94,6 +94,8 @@ private struct GridLayout {
 struct MediaGridCell: Identifiable, Equatable {
     let itemID: FeedItem.ID
     let media: Media
+    /// The media's address within its post, for its menu.
+    let link: URL?
 
     var id: String { "\(itemID)-\(media.id)" }
 }
@@ -109,7 +111,8 @@ private final class MediaCellsMemo {
         ids = Array(items.ids)
         cells = items.flatMap { item -> [MediaGridCell] in
             guard case .tweet(let feedTweet) = item else { return [] }
-            return feedTweet.tweet.media.map { MediaGridCell(itemID: item.id, media: $0) }
+            let tweet = feedTweet.tweet
+            return tweet.media.map { MediaGridCell(itemID: item.id, media: $0, link: tweet.mediaURL(of: $0)) }
         }
         return cells
     }
@@ -140,6 +143,8 @@ private struct MediaCell: View {
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        // A long press previews the whole photo, uncropped; the menu's first action opens the post, as a tap does.
+        .mediaPreview(cell.media, link: cell.link, openTitle: "View Post", open: action)
         .accessibilityLabel(cell.media.altText ?? (cell.media.kind == .photo ? "Image" : "Video"))
         .accessibilityHint("Opens the post")
     }

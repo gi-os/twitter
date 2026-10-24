@@ -6,6 +6,7 @@ import Routing
 import SearchFeature
 import SwiftUI
 import TwitterUI
+import UserListFeature
 import WebFeature
 
 /// A tab's navigation, laid out for whichever iPhone Duo display and pose it's on, and never with an empty pane.
@@ -48,15 +49,24 @@ package struct TabStackView: View {
             finishClosing: finishClosing,
             throwAway: { popColumns(after: nil) }
         ) {
-            HStack(spacing: layout.separatorWidth) {
+            HStack(spacing: 0) {
                 // Where columns are possible the root never pushes (everything opens as a column), so it binds to the
                 // always-empty path; on one stack it is the stack. A navigation stack doesn't survive its path binding
                 // changing (it drops its root or ignores the pushes), so folding or unfolding gives it a fresh one, and
                 // the feed restores its scroll position from state.
                 NavigationStack(path: layout.canShowColumns ? rootColumnPath : path) {
                     TabRootView(store: store, title: title)
+                        .environment(\.isFrontmostColumn, store.path.isEmpty || !layout.showsColumns)
+                        // A lone stack reaches under the side bar; painting it here keeps the fill beneath the bar's
+                        // own buttons.
+                        .classicSideBar()
+                        // The strip's scroll view reaches under the side bar whatever its frame, and hands that inset
+                        // to every column inside it, wherever the column is. Columns are laid out clear of the side
+                        // bar already; a lone stack spans the strip and keeps clear of it.
+                        .ignoresSafeArea(.container, edges: layout.showsColumns ? .horizontal : [])
                 } destination: { pathStore in
                     TabStackPathView(store: pathStore)
+                        .classicSideBar()
                 }
                 .id(layout.canShowColumns)
                 .containerRelativeFrame(.horizontal) { width, _ in
@@ -65,6 +75,10 @@ package struct TabStackView: View {
                 // The root reflows once, at its new width, rather than on every frame of the new column sliding in.
                 .transaction(value: layout.showsColumns) { $0.animation = nil }
                 .dimsUnderLeadingEdge(isEnabled: layout.showsColumns)
+                // Alone on the backdrop, the root casts onto it; opened columns cover this as they slide over.
+                .overlay(alignment: .trailing) {
+                    if layout.showsColumns { ClassicColumnShadow(edge: .trailing) }
+                }
                 // On one stack the root holds everything on screen, so it's what shakes.
                 .alreadyHereShake(
                     trigger: store.shake.count, isActive: !layout.showsColumns || store.shake.column == nil
@@ -93,11 +107,14 @@ package struct TabStackView: View {
                 }
             }
             // Columns slide in and out; on one stack the navigation stack animates its own pushes.
-            .animation(layout.canShowColumns ? .snappy : nil, value: store.path.ids)
+            .animation(layout.canShowColumns ? ColumnLayout.slide : nil, value: store.path.ids)
         }
         .background {
             if layout.canShowColumns { ColumnBackdrop() }
+            // Where columns leave the side bar's area uncovered.
+            Color.clear.classicSideBar()
         }
+        .classicTabBar()
         .onChange(of: store.path.count) {
             shownDepth = store.path.count
         }
@@ -180,12 +197,14 @@ private struct ColumnStrip<Content: View>: View {
         }
         .scrollPosition($position)
         .defaultScrollAnchor(layout.showsColumns ? .trailing : nil, for: .initialOffset)
-        // The strip spans the whole width and each column's navigation stack keeps its content clear of the side bar
-        // and camera itself; insetting the strip too would apply the side bar's inset twice.
-        .ignoresSafeArea(.container, edges: .horizontal)
+        // A lone stack spans the whole width and keeps its content clear of the side bar and camera itself; insetting
+        // the strip too would apply the side bar's inset twice. Columns are laid out within the safe area, so there
+        // the strip keeps to it: reaching under the side bar, it would hand its inset to every column inside it, and
+        // could never scroll the newest column fully into view.
+        .ignoresSafeArea(.container, edges: layout.showsColumns ? [] : .horizontal)
         .scrollTargetBehavior(ColumnSnapping(stops: layout.snapOffsets))
         .scrollIndicators(.hidden)
-        .scrollDisabled(!layout.showsColumns)
+        .scrollDisabled(!layout.isScrollable)
         .scrollBounceBehavior(.always, axes: .horizontal)
         // Reports only the crossing, so dragging the strip never re-renders the columns.
         .onScrollGeometryChange(for: Bool.self) { scroll in
@@ -204,7 +223,7 @@ private struct ColumnStrip<Content: View>: View {
         .transaction(value: newestColumn) { $0.scrollContentOffsetAdjustmentBehavior = .disabled }
         // A newly opened column slides in at the trailing edge; closing them slides back.
         .onChange(of: newestColumn) {
-            withAnimation(.snappy) { position.scrollTo(x: layout.offset) }
+            withAnimation(ColumnLayout.slide) { position.scrollTo(x: layout.offset) }
         }
         // Folding, unfolding and turning keep the newest column at the trailing edge, without animating.
         .onChange(of: geometry) {
@@ -212,7 +231,7 @@ private struct ColumnStrip<Content: View>: View {
         }
         .onChange(of: closing) {
             guard let closing else { return }
-            withAnimation(.snappy) {
+            withAnimation(ColumnLayout.slide) {
                 position.scrollTo(x: closing.offset)
             } completion: {
                 finishClosing()
@@ -273,21 +292,12 @@ private struct AlreadyHereShake: ViewModifier {
     }
 }
 
-/// A column's sheet of paper: opaque, casting onto the column it lies on from its leading edge. A gradient rather than a
-/// blurred shadow, so it costs nothing to move.
+/// A column's sheet of paper: opaque, casting onto the column it lies on from its leading edge.
 private struct ColumnPaper: View {
     var body: some View {
         Rectangle()
             .fill(.background)
-            .overlay(alignment: .leading) {
-                LinearGradient(
-                    colors: [.black.opacity(0), .black.opacity(0.08), .black.opacity(0.24)],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .frame(width: 18)
-                .offset(x: -18)
-            }
+            .overlay(alignment: .leading) { ClassicColumnShadow(edge: .leading) }
             .ignoresSafeArea()
     }
 }
@@ -302,11 +312,16 @@ private struct StackedColumn: View {
     var body: some View {
         NavigationStack {
             TabStackPathView(store: store)
+                .environment(\.isFrontmostColumn, isFrontmost)
+                // See the root column: laid out clear of the side bar, but handed its inset anyway.
+                .ignoresSafeArea(.container, edges: .horizontal)
                 .toolbar {
                     if isFrontmost {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("Close", systemImage: "xmark", action: close)
+                                .buttonStyle(.classicBar(isOnSideBar: false))
                         }
+                        .sharedBackgroundVisibility(.hidden)
                     }
                 }
         }
@@ -360,6 +375,8 @@ struct ColumnGeometry: Equatable {
 struct ColumnLayout: Equatable {
     /// How far past its start the strip is pulled before letting go throws the opened columns away (Twitter for iPad).
     static let throwDistance: CGFloat = 120
+    /// Columns sliding in, out, and back to where they rest: quick, and settling without a bounce.
+    static let slide: Animation = .snappy(duration: 0.28)
     /// Twitter for iPad's column: two fill iPhone Duo's inner display in landscape, and one leaves a readable sliver
     /// of the previous column in portrait.
     static let preferredColumnWidth: CGFloat = 476
@@ -372,11 +389,14 @@ struct ColumnLayout: Equatable {
     var canShowColumns = false
     /// Width of every column while columns are shown, but a wide web panel.
     var columnWidth: CGFloat = 0
-    /// Space between columns: the fold's width when partially folded, otherwise 0 (a hairline).
-    var separatorWidth: CGFloat = 0
-    /// Whether columns are laid out side by side (as opposed to everything on the root's own navigation stack, or one
-    /// full-width root).
+    /// Whether the stack is laid out as columns, as opposed to everything on the root's own navigation stack, or a
+    /// root spanning both sides of a fold. On a flat display the root is a column even alone, Twitter for iPad's
+    /// sheet of paper on the backdrop, so opening something slides a column in beside it without reflowing it.
     var showsColumns = false
+    /// Whether the strip slides between columns.
+    var isScrollable = false
+    /// Across a fold the strip only comes to rest with a column on each side of it, the way a book lies open.
+    private var isFolded = false
     /// How far the strip of columns is shifted left so the newest one ends at the trailing edge.
     var offset: CGFloat = 0
     /// The width of the root and of each opened column, while columns are shown.
@@ -392,20 +412,27 @@ struct ColumnLayout: Equatable {
         let width = geometry.width
         containerWidth = width
         canShowColumns = width > 0 && (geometry.fold != nil || width >= Self.minimumColumnWidth + 160)
-        guard canShowColumns, !wideColumns.isEmpty else { return }
+        guard canShowColumns, geometry.fold == nil || !wideColumns.isEmpty else { return }
         showsColumns = true
+        isScrollable = true
         if let fold = geometry.fold {
-            columnWidth = min(fold.lowerBound, width - fold.upperBound)
-            separatorWidth = fold.upperBound - fold.lowerBound
-        } else if width >= 2 * Self.minimumColumnWidth {
+            isFolded = true
+            // Like a book lying open: the newest column is the page right of the fold and the one before it the page
+            // left of it, meeting at the fold's middle with nothing between them. Any before those are off the leading
+            // edge until they're closed.
+            columnWidth = ((fold.lowerBound + fold.upperBound) / 2).rounded()
+            widths = Array(repeating: columnWidth, count: wideColumns.count) + [width - columnWidth]
+            offset = max(minX(ofColumn: widths.count - 1) + widths[widths.count - 1] - width, 0)
+            return
+        }
+        if width >= 2 * Self.minimumColumnWidth {
             columnWidth = (width / 2).rounded(.down)
         } else {
             columnWidth = min(Self.preferredColumnWidth, width)
         }
-        // Partially folded, a page keeps to its side of the fold like everything else.
-        let wideWidth = geometry.fold == nil ? max(columnWidth, width - Self.webPanelPeek) : columnWidth
+        let wideWidth = max(columnWidth, width - Self.webPanelPeek)
         widths = [columnWidth] + wideColumns.map { $0 ? wideWidth : columnWidth }
-        let stripWidth = widths.reduce(0, +) + CGFloat(widths.count - 1) * separatorWidth
+        let stripWidth = widths.reduce(0, +)
         offset = max(stripWidth - width, 0)
     }
 
@@ -415,13 +442,17 @@ struct ColumnLayout: Equatable {
 
     /// Where a column starts in the strip.
     func minX(ofColumn column: Int) -> CGFloat {
-        widths.prefix(column).reduce(0, +) + CGFloat(column) * separatorWidth
+        widths.prefix(column).reduce(0, +)
     }
 
     /// Where the strip can come to rest: with any column's leading edge at the leading edge of the display, or its
     /// trailing edge at the trailing edge.
     var snapOffsets: [CGFloat] {
         guard showsColumns else { return [] }
+        if isFolded {
+            // Each pair of neighbours open across the fold.
+            return Set(widths.indices.map { min(minX(ofColumn: $0), offset).rounded() }).sorted()
+        }
         let edges = widths.indices.flatMap { column in
             let minX = minX(ofColumn: column)
             return [minX, minX + width(ofColumn: column) - containerWidth]
@@ -451,12 +482,19 @@ private struct TabRootView: View {
         TabRootContentView(store: store.scope(state: \.root, action: \.root))
             .navigationTitle(title)
             .toolbar {
-                ToolbarItem(placement: .topBarPinnedTrailing) {
-                    Button("New Post", systemImage: "square.and.pencil") {
+                ToolbarItem(placement: .bottomBar) {
+                    Button {
                         store.send(.composeButtonTapped)
+                    } label: {
+                        ClassicGlyphLabel("New Post", glyph: .compose)
                     }
+                    .buttonStyle(.classicBar(isOnSideBar: true))
                 }
                 .visibilityPriority(.high)
+                // In iPhone Duo's side bar where there is one, with the tabs.
+                .axisBehavior(.verticalPreferred)
+                // A bare glyph, as 4.x's were, rather than a glass disc.
+                .sharedBackgroundVisibility(.hidden)
             }
     }
 }
@@ -471,13 +509,24 @@ private struct TabRootContentView: View {
                 .navigationBarTitleDisplayMode(.inline)
         case .profile(let store):
             ProfileView(store: store)
+        case .quotes(let store):
+            FeedView(store: store)
+                .navigationTitle("Quotes")
+                .navigationBarTitleDisplayMode(.inline)
+                .classicTitleBar()
         case .search(let store):
             SearchView(store: store)
+                .classicTitleBar()
         case .thread(let store):
             ThreadView(store: store)
                 .navigationBarTitleDisplayMode(.inline)
+                .classicTitleBar()
+        case .userList(let store):
+            UserListView(store: store)
+                .classicTitleBar()
         case .web(let store):
             WebPanelView(store: store)
+                .classicTitleBar()
         }
     }
 }
@@ -489,14 +538,25 @@ private struct TabStackPathView: View {
         switch store.case {
         case .profile(let store):
             ProfileView(store: store)
+        case .quotes(let store):
+            FeedView(store: store)
+                .navigationTitle("Quotes")
+                .navigationBarTitleDisplayMode(.inline)
+                .classicTitleBar()
         case .search(let store):
             SearchView(store: store)
+                .classicTitleBar()
         case .thread(let store):
             ThreadView(store: store)
                 .navigationTitle("Post")
                 .navigationBarTitleDisplayMode(.inline)
+                .classicTitleBar()
+        case .userList(let store):
+            UserListView(store: store)
+                .classicTitleBar()
         case .web(let store):
             WebPanelView(store: store)
+                .classicTitleBar()
         }
     }
 }

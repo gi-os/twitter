@@ -38,22 +38,8 @@ package struct TweetRow: View {
         }
         .padding(.horizontal, metrics.sideInset)
         .padding(.top, item.connectsAbove ? 4 : metrics.topInset)
-        .padding(.bottom, item.connectsBelow ? 0 : metrics.actionBarBottomInset)
-        .overlayPreferenceValue(AvatarBoundsKey.self) { avatar in
-            // Stacked rows have no avatar column for the line to run down, so a thread's posts are joined by a
-            // rail in the leading margin instead, meeting each avatar at its middle.
-            if columnStyle == .stacked, layout == .stacked, let avatar {
-                GeometryReader { proxy in
-                    ThreadRail(
-                        avatarMidY: proxy[avatar].midY,
-                        connectsAbove: item.connectsAbove,
-                        connectsBelow: item.connectsBelow,
-                        x: proxy[avatar].minX / 2,
-                        height: proxy.size.height
-                    )
-                }
-            }
-        }
+        // The focused post's action bar is its bottom edge.
+        .padding(.bottom, item.connectsBelow || isFocused ? 0 : metrics.actionBarBottomInset)
         .foregroundStyle(.twitterPrimary)
         .overlay(alignment: .topTrailing) {
             if engagement.like.isOn || engagement.repost.isOn {
@@ -104,7 +90,6 @@ package struct TweetRow: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: metrics.gutter) {
                 avatarButton
-                    .anchorPreference(key: AvatarBoundsKey.self, value: .bounds) { $0 }
                 // The focused post's time is spelled out above its action bar instead.
                 AuthorLine(user: tweet.author, date: isFocused ? nil : tweet.createdAt, layout: .stacked)
             }
@@ -170,10 +155,16 @@ package struct TweetRow: View {
             if isFocused, let date = tweet.createdAt {
                 FocusedTimestampLine(date: date, views: tweet.viewCount)
             }
-            EngagementBar(tweet: tweet, engagement: engagement, store: store)
-                .padding(.top, metrics.actionTopMargin - metrics.mediaTextMargin)
-                // Room under the bar that stays inside the row, so the thread line runs on unbroken.
-                .padding(.bottom, item.connectsBelow ? 4 * metrics.unit : 0)
+            if isFocused {
+                DetailEngagementBar(tweet: tweet, engagement: engagement, store: store)
+                    // Across the row's full width.
+                    .padding(.horizontal, -metrics.sideInset)
+            } else {
+                EngagementBar(tweet: tweet, engagement: engagement, store: store)
+                    .padding(.top, metrics.actionTopMargin - metrics.mediaTextMargin)
+                    // Room under the bar that stays inside the row, so the thread line runs on unbroken.
+                    .padding(.bottom, item.connectsBelow ? 4 * metrics.unit : 0)
+            }
         }
     }
 }
@@ -188,38 +179,6 @@ private struct ReplyingToLine: View {
             .font(metrics.font(.body))
             .foregroundStyle(.twitterSecondary)
             .lineLimit(1)
-    }
-}
-
-/// Where a stacked row's avatar is, for the thread rail beside it.
-private struct AvatarBoundsKey: PreferenceKey {
-    static let defaultValue: Anchor<CGRect>? = nil
-
-    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
-        value = value ?? nextValue()
-    }
-}
-
-/// A stacked thread's line: down the leading margin from the row above to this avatar's middle, and on from there
-/// to the next row, in the same colour and weight as ``ThreadConnector``.
-private struct ThreadRail: View {
-    let avatarMidY: CGFloat
-    let connectsAbove: Bool
-    let connectsBelow: Bool
-    let x: CGFloat
-
-    let height: CGFloat
-
-    var body: some View {
-        if connectsAbove || connectsBelow {
-            let top = connectsAbove ? 0 : avatarMidY
-            let bottom = connectsBelow ? height : avatarMidY
-            Capsule()
-                .fill(.twitterDivider)
-                .frame(width: 2, height: max(bottom - top, 0))
-                .position(x: x, y: (top + bottom) / 2)
-                .accessibilityHidden(true)
-        }
     }
 }
 
@@ -272,7 +231,7 @@ private struct ReplyRestrictionBanner: View {
         .font(.footnote)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(.fill.quaternary, in: .rect(cornerRadius: 12, style: .continuous))
+        .background(.fill.quaternary, in: .rect(cornerRadius: 12))
         .accessibilityElement(children: .combine)
     }
 }
@@ -364,23 +323,7 @@ private struct EngagementBarRow: View {
             .disabled(!tweet.viewerCanReply)
             .opacity(tweet.viewerCanReply ? 1 : 0.4)
             BarSpacer()
-            Menu {
-                Button {
-                    store.send(.repostButtonTapped(tweet))
-                } label: {
-                    Label(engagement.repost.isOn ? "Undo Repost" : "Repost", systemImage: "arrow.2.squarepath")
-                }
-                Button {
-                    store.send(.quoteButtonTapped(tweet))
-                } label: {
-                    Label("Quote", systemImage: "quote.bubble")
-                }
-            } label: {
-                EngagementLabel(icon: .repostStroke, count: engagement.repost.count)
-                    .foregroundStyle(engagement.repost.isOn ? .twitterRepost : .twitterSecondary)
-            }
-            .accessibilityLabel(engagement.repost.isOn ? "Undo Repost" : "Repost")
-            .accessibilityValue(engagement.repost.count.formatted())
+            RepostMenu(tweet: tweet, engagement: engagement, store: store)
             BarSpacer()
             LikeButton(isLiked: engagement.like.isOn, count: engagement.like.count) {
                 store.send(.likeButtonTapped(tweet))
@@ -409,6 +352,71 @@ private struct EngagementBarRow: View {
                 .accessibilityLabel("Share")
             }
         }
+    }
+}
+
+/// The focused post's actions on 4.x's details shelf: reply, repost, like, bookmark and share, spread evenly at full
+/// size. Its views are counted in the line above.
+private struct DetailEngagementBar: View {
+    let tweet: Tweet
+    let engagement: Engagement
+    let store: StoreOf<FeedFeature>
+
+    var body: some View {
+        ClassicDetailActionBar {
+            EngagementButton(
+                action: { store.send(.replyButtonTapped(tweet)) },
+                count: tweet.replyCount,
+                icon: .replyStroke,
+                label: "Reply"
+            )
+            .disabled(!tweet.viewerCanReply)
+            .opacity(tweet.viewerCanReply ? 1 : 0.4)
+            RepostMenu(tweet: tweet, engagement: engagement, store: store)
+            LikeButton(isLiked: engagement.like.isOn, count: engagement.like.count) {
+                store.send(.likeButtonTapped(tweet))
+            }
+            EngagementButton(
+                action: { store.send(.bookmarkButtonTapped(tweet)) },
+                activeIcon: .bookmark,
+                icon: .bookmarkStroke,
+                isActive: engagement.bookmark.isOn,
+                label: engagement.bookmark.isOn ? "Remove Bookmark" : "Bookmark"
+            )
+            ShareLink(item: tweet.url) {
+                EngagementLabel(icon: .shareStroke, count: nil, minWidth: EngagementLabel.iconOnlyWidth)
+                    .foregroundStyle(.twitterSecondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Share")
+        }
+    }
+}
+
+/// Repost or quote, from the repost button.
+private struct RepostMenu: View {
+    let tweet: Tweet
+    let engagement: Engagement
+    let store: StoreOf<FeedFeature>
+
+    var body: some View {
+        Menu {
+            Button {
+                store.send(.repostButtonTapped(tweet))
+            } label: {
+                Label(engagement.repost.isOn ? "Undo Repost" : "Repost", systemImage: "arrow.2.squarepath")
+            }
+            Button {
+                store.send(.quoteButtonTapped(tweet))
+            } label: {
+                Label("Quote", systemImage: "quote.bubble")
+            }
+        } label: {
+            EngagementLabel(icon: engagement.repost.isOn ? .repost : .repostStroke, count: engagement.repost.count)
+                .foregroundStyle(engagement.repost.isOn ? .twitterRepost : .twitterSecondary)
+        }
+        .accessibilityLabel(engagement.repost.isOn ? "Undo Repost" : "Repost")
+        .accessibilityValue(engagement.repost.count.formatted())
     }
 }
 
@@ -444,6 +452,7 @@ package struct TweetMenu: View {
         } label: {
             Label("Quote", systemImage: "quote.bubble")
         }
+        PostActivityMenu(tweet: tweet, isOwnPost: tweet.author.id == viewer?.id, store: store)
         Button {
             store.send(.authorTapped(tweet.author))
         } label: {
@@ -501,7 +510,7 @@ package struct NotificationRow: View {
                                 .background(
                                     .background,
                                     in: RoundedRectangle(
-                                        cornerRadius: user.hasSquareAvatar ? 32 / 5 : 32 / 2, style: .continuous)
+                                        cornerRadius: user.hasSquareAvatar ? 32 / 5 : 32 / 2)
                                 )
                         }
                         .buttonStyle(.plain)
@@ -521,6 +530,8 @@ package struct NotificationRow: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+        // Opaque, so the row lifted for its context menu isn't see-through.
+        .background(.background)
         .contentShape(.rect)
         .onTapGesture {
             if let tweet = notification.tweet {
@@ -528,6 +539,27 @@ package struct NotificationRow: View {
             } else if let user = notification.users.first {
                 store.send(.authorTapped(user))
             }
+        }
+        .modifier(NotificationMenu(notification: notification, store: store))
+    }
+}
+
+/// A long press does what a tap would, ahead of time, as Twitter's `NotificationsStatusView` does: a notification
+/// about a post gets the post's menu, one about people (a follow) previews the first of them. Each avatar keeps its
+/// own profile preview.
+private struct NotificationMenu: ViewModifier {
+    let notification: TwitterNotification
+    let store: StoreOf<FeedFeature>
+
+    func body(content: Content) -> some View {
+        if let tweet = notification.tweet {
+            content.contextMenu {
+                TweetMenu(tweet: tweet, engagement: store.engagements.engagement(for: tweet), store: store)
+            }
+        } else if let user = notification.users.first {
+            content.profilePreview(for: user) { store.send(.authorTapped(user)) }
+        } else {
+            content
         }
     }
 }

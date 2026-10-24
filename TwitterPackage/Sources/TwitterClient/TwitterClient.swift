@@ -31,6 +31,7 @@ package struct TwitterClient: Sendable {
     package var signIn: @Sendable (_ cookies: [String: String]) async throws -> User
     package var signOut: @Sendable () async -> Void
     package var user: @Sendable (_ screenName: String) async throws -> User
+    package var users: @Sendable (_ source: UserListSource, _ cursor: String?) async throws -> UserPage
 }
 
 extension TwitterClient: TestDependencyKey {
@@ -51,7 +52,8 @@ extension TwitterClient: TestDependencyKey {
             signOut: {},
             user: { screenName in
                 User.mocks.first { $0.screenName.lowercased() == screenName.lowercased() } ?? .mock
-            }
+            },
+            users: { source, cursor in .mock(source, cursor: cursor) }
         )
     }
 }

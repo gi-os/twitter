@@ -3,6 +3,7 @@ import ComposeFeature
 import Routing
 import SwiftUI
 import TabStackFeature
+import TwitterUI
 
 package struct RouteWindowView: View {
     @Bindable var store: StoreOf<RouteWindowFeature>
@@ -24,7 +25,7 @@ package struct RouteWindowView: View {
                     Text(message)
                 } actions: {
                     Button("Try Again") { store.send(.task) }
-                        .buttonStyle(.glassProminent)
+                        .buttonStyle(.classicProminent)
                 }
             case .ready:
                 TabStackView(store: store.scope(state: \.stack, action: \.stack), title: store.route.windowTitle)
@@ -52,8 +53,10 @@ extension WindowRoute {
     fileprivate var windowTitle: LocalizedStringKey {
         switch self {
         case .profile(let screenName): "@\(screenName)"
+        case .quotes: "Quotes"
         case .search(let query): "Search: \(query)"
         case .thread: "Post"
+        case .userList(let source): "\(source.title)"
         case .web(let url): "\(url.host() ?? url.absoluteString)"
         }
     }

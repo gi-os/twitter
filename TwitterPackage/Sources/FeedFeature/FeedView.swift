@@ -73,7 +73,7 @@ private struct NewPostsButton: View {
                 .font(.subheadline.weight(.semibold))
                 .padding(.horizontal, 6)
         }
-        .buttonStyle(.glassProminent)
+        .buttonStyle(.classicProminent)
         .sensoryFeedback(.increase, trigger: count)
     }
 }
@@ -108,6 +108,8 @@ private struct FeedItemRow: View {
     let isFocused: Bool
     let store: StoreOf<FeedFeature>
     @Environment(\.threadMeasurements) private var threadMeasurements
+    @Environment(\.tweetMetrics) private var metrics
+    @SharedReader(.postRowStyle) private var style
 
     var body: some View {
         VStack(spacing: 0) {
@@ -133,7 +135,9 @@ private struct FeedItemRow: View {
                     store.send(.showMoreButtonTapped(cursor))
                 }
             }
-            TwitterDivider()
+            if !runsThreadLineThrough {
+                TwitterDivider()
+            }
         }
         .onGeometryChange(for: CGFloat?.self) { proxy in
             isFocused ? proxy.frame(in: .named(ThreadView.coordinateSpace)).minY : nil
@@ -141,6 +145,15 @@ private struct FeedItemRow: View {
             // Keeps the last value once the lazy stack releases the row.
             if let minY { threadMeasurements?.focusedMinY = minY }
         }
+    }
+}
+
+extension FeedItemRow {
+    /// Whether the line under this post's avatar runs on into the next post of its thread, which it joins without a
+    /// separator. Stacked rows have no avatar column for the line, so they keep theirs.
+    fileprivate var runsThreadLineThrough: Bool {
+        guard case .tweet(let feedTweet) = item, feedTweet.connectsBelow, !isFocused else { return false }
+        return style.resolved(in: metrics) != .stacked
     }
 }
 
@@ -188,19 +201,15 @@ private struct FeedInteractions: ViewModifier {
     private static let refreshTriggerDistance: CGFloat = 80
 
     let store: StoreOf<FeedFeature>
-    /// The pull catching, releasing, then the timeline landing: Twitter for iPad's "psst", "psst" and "pop", each
-    /// with a haptic.
+    /// The pull catching, releasing, then the timeline landing: Twitter for iPad's "psst", "psst" and "pop". The
+    /// refresh control plays its own haptics.
     @State private var isPastRefreshTrigger = false
-    @State private var refreshesFinished = 0
-    @State private var refreshesStarted = 0
 
     func body(content: Content) -> some View {
         content
             .refreshable {
-                refreshesStarted += 1
                 ClassicSound.psst2.play()
                 await store.send(.refreshPulled).finish()
-                refreshesFinished += 1
                 ClassicSound.pop.play()
             }
             .onScrollGeometryChange(for: Bool.self) { geometry in
@@ -209,9 +218,6 @@ private struct FeedInteractions: ViewModifier {
                 if isPast, !isPastRefreshTrigger { ClassicSound.psst1.play() }
                 isPastRefreshTrigger = isPast
             }
-            .sensoryFeedback(.impact(weight: .light), trigger: isPastRefreshTrigger) { _, isPast in isPast }
-            .sensoryFeedback(.selection, trigger: refreshesStarted)
-            .sensoryFeedback(.success, trigger: refreshesFinished)
             .task { store.send(.task) }
             .environment(
                 \.openURL,
@@ -234,7 +240,7 @@ struct FeedFooter: View {
                     Text(errorMessage)
                 } actions: {
                     Button("Try Again") { store.send(.retryButtonTapped) }
-                        .buttonStyle(.glass)
+                        .buttonStyle(.classic)
                 }
             } else if store.isLoading {
                 ProgressView()
@@ -264,16 +270,30 @@ package struct FeedsView<Header: View>: View {
                 header
             }
             .id(store.selection)
-            // Part of the chrome rather than the content: a bar under the navigation bar that posts scroll beneath,
-            // with no backing of its own. A bar rather than a toolbar item, because toolbar items can't sit in
-            // iPhone Duo's vertical side bar and would disappear on the folded display.
-            .safeAreaBar(edge: .top) {
-                if store.feeds.count > 1 {
+            // Under a header (a profile's), on the column bar beneath the title; at the top of a tab, in the
+            // navigation bar in place of the title, as Twitter for iPad's column filters were.
+            .classicTitleBar {
+                if showsSwitcher, !isTopLevel {
                     FeedSwitcher(feeds: store.feeds.map(\.source), selection: $store.selection)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 2)
+                        .padding(.bottom, 10)
+                }
+            }
+            .toolbar {
+                if showsSwitcher, isTopLevel {
+                    ToolbarItem(placement: .principal) {
+                        FeedSwitcher(feeds: store.feeds.map(\.source), selection: $store.selection)
+                            .frame(maxWidth: 280)
+                    }
+                    .sharedBackgroundVisibility(.hidden)
                 }
             }
         }
     }
+
+    private var isTopLevel: Bool { Header.self == EmptyView.self }
+    private var showsSwitcher: Bool { store.feeds.count > 1 }
 }
 
 /// Which of a screen's feeds is showing: For You and Following, or a profile's Posts, Replies and Media.
@@ -282,19 +302,9 @@ private struct FeedSwitcher: View {
     @Binding var selection: FeedSource
 
     var body: some View {
-        Picker("Feed", selection: $selection.animation(.snappy)) {
-            ForEach(feeds, id: \.self) { feed in
-                Text(feed.title).tag(feed)
-            }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        // Over the readable column on a wide display instead of stretching across it.
-        .frame(maxWidth: 680)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity)
-        .sensoryFeedback(.selection, trigger: selection)
+        ClassicSegmentedControl(feeds, selection: $selection.animation(.snappy)) { Text($0.title) }
+            // Over the readable column on a wide display instead of stretching across it.
+            .frame(maxWidth: 680)
     }
 }
 
