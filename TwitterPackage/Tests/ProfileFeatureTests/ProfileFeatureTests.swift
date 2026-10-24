@@ -28,6 +28,58 @@ struct ProfileFeatureTests {
     }
 
     @Test
+    func blockIsOptimisticAndUnblockRevertsOnFailure() async {
+        struct Failure: Error {}
+        let calls = LockIsolated<[Bool]>([])
+        let store = TestStore(initialState: ProfileFeature.State(user: .mockFriend)) {
+            ProfileFeature()
+        } withDependencies: {
+            $0[TwitterClient.self].setBlocking = { isBlocking, userID in
+                #expect(userID == User.mockFriend.id)
+                calls.withValue { $0.append(isBlocking) }
+                if !isBlocking { throw Failure() }
+            }
+        }
+
+        await store.send(.blockButtonTapped) {
+            $0.user?.isBlocking = true
+        }
+        await store.send(.viewPostsButtonTapped) {
+            $0.isShowingBlockedPosts = true
+        }
+        await store.send(.blockButtonTapped) {
+            $0.user?.isBlocking = false
+            $0.isShowingBlockedPosts = false
+        }
+        await store.receive(\.blockFailed) {
+            $0.user?.isBlocking = true
+        }
+        #expect(calls.value == [true, false])
+    }
+
+    @Test
+    func unfollowIsOptimisticAndRestoresOnFailure() async {
+        struct Failure: Error {}
+        let store = TestStore(initialState: ProfileFeature.State(user: .mockFriend)) {
+            ProfileFeature()
+        } withDependencies: {
+            $0[TwitterClient.self].setFollowing = { isFollowing, _ in
+                #expect(!isFollowing)
+                throw Failure()
+            }
+        }
+
+        await store.send(.followButtonTapped) {
+            $0.user?.isFollowing = false
+            $0.user?.followersCount = User.mockFriend.followersCount - 1
+        }
+        await store.receive(\.followFailed) {
+            $0.user?.isFollowing = true
+            $0.user?.followersCount = User.mockFriend.followersCount
+        }
+    }
+
+    @Test
     func failedFetchCanBeRetried() async {
         struct Failure: Error {}
         let store = TestStore(initialState: ProfileFeature.State(screenName: "pointfreeco")) {

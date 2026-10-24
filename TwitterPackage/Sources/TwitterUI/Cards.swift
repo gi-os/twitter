@@ -4,6 +4,7 @@ import SwiftUI
 package struct QuoteCard: View {
     let tweet: Tweet
     let action: () -> Void
+    @Environment(\.tweetMetrics) private var metrics
 
     package init(tweet: Tweet, action: @escaping () -> Void) {
         self.tweet = tweet
@@ -11,28 +12,39 @@ package struct QuoteCard: View {
     }
 
     package var body: some View {
+        let unit = metrics.unit
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Avatar(user: tweet.author, size: 20)
+            VStack(alignment: .leading, spacing: 4 * unit) {
+                HStack(spacing: 4 * unit) {
+                    Avatar(user: tweet.author, size: metrics.quoteAvatarSize)
                     AuthorLine(user: tweet.author, date: tweet.createdAt)
                 }
                 if !tweet.text.isEmpty {
-                    Text(tweet.text)
-                        .font(.subheadline)
-                        .lineLimit(6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    // `ios_ui_quoted_tweet_custom_max_text_lines`.
+                    // The card is one button: its text is styled like a post's, but taps open the quoted post.
+                    TweetText(tweet: tweet)
+                        .lineLimit(5)
+                        .environment(\.mentionPreviewsEnabled, false)
+                        .allowsHitTesting(false)
                 }
                 if !tweet.media.isEmpty {
-                    MediaGrid(media: tweet.media, maxHeight: 180)
+                    MediaGrid(media: tweet.media, maxHeight: 180, tweet: tweet)
+                        .padding(.top, 4 * unit)
                 }
             }
-            .padding(12)
+            // Quoted-post insets are 12u on three sides and 4u at the bottom; the extra 8u keeps text-only cards
+            // from crowding their border.
+            .padding(.top, 12 * unit)
+            .padding(.horizontal, 12 * unit)
+            .padding(.bottom, 4 * unit + 8 * unit)
+            .background(.background, in: .rect(cornerRadius: 12, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(.quaternary)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(.twitterDivider)
             }
             .contentShape(.rect)
+            // Lifted for a context menu as the card it is, not a square cut out of the row.
+            .contentShape(.contextMenuPreview, .rect(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -49,14 +61,10 @@ package struct LinkCardView: View {
         Link(destination: card.url) {
             VStack(alignment: .leading, spacing: 0) {
                 if let imageURL = card.imageURL {
-                    AsyncImage(url: imageURL) { image in
-                        image.resizable().scaledToFill()
-                    } placeholder: {
-                        Rectangle().fill(.quaternary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 160)
-                    .clipped()
+                    RemoteImage(url: imageURL, pointSize: 600)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 160)
+                        .clipped()
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(card.domain)
@@ -70,10 +78,11 @@ package struct LinkCardView: View {
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .clipShape(.rect(cornerRadius: 16, style: .continuous))
+            .clipShape(.rect(cornerRadius: 12, style: .continuous))
+            .contentShape(.rect(cornerRadius: 12, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(.quaternary)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(.twitterDivider)
             }
         }
         .buttonStyle(.plain)

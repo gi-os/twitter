@@ -27,11 +27,16 @@ package enum TimelineParser {
             case "TimelinePinEntry", "TimelineReplaceEntry":
                 if let entry = instruction["entry"] as? JSON { entries.append(entry) }
             case "TimelineAddToModule":
-                // Later pages of a module (e.g. the profile media grid) arrive as module items.
-                let moduleItems = (instruction["moduleItems"] as? [JSON] ?? []).compactMap { $0["item"] as? JSON }
+                // Later pages of a module (the profile media grid, a conversation's "Show more replies") arrive as
+                // module items.
+                let moduleEntryID = instruction["moduleEntryId"] as? String ?? "module"
                 entries.append([
-                    "entryId": instruction["moduleEntryId"] as? String ?? "module",
-                    "content": ["entryType": "TimelineTimelineModule", "items": moduleItems.map { ["item": $0] }]
+                    "entryId": moduleEntryID,
+                    "content": [
+                        "entryType": "TimelineTimelineModule",
+                        "items": instruction["moduleItems"] as? [JSON] ?? [],
+                        "displayType": moduleEntryID.hasPrefix("conversationthread") ? "VerticalConversation" : ""
+                    ] as JSON
                 ])
             default:
                 break
@@ -49,7 +54,8 @@ package enum TimelineParser {
                 switch content["cursorType"] as? String {
                 case "Bottom": bottom = value
                 case "Top": top = value
-                default: break
+                default:
+                    if let showMore = showMoreCursor(from: content, entryID: entryID) { append(.showMore(showMore)) }
                 }
             case "TimelineTimelineItem":
                 guard let itemContent = content["itemContent"] as? JSON else { continue }
@@ -61,19 +67,31 @@ package enum TimelineParser {
                     bottom = itemContent["value"] as? String
                 }
             case "TimelineTimelineModule":
-                let moduleItems = (content["items"] as? [JSON] ?? []).compactMap { $0["item"] as? JSON }
-                var tweets: [FeedTweet] = []
-                for moduleItem in moduleItems {
-                    guard let itemContent = moduleItem["itemContent"] as? JSON,
-                        case .tweet(let feedTweet)? = feedItem(from: itemContent, entryID: entryID, context: moduleItem)
+                var moduleEntries: [FeedItem] = []
+                for (index, wrapper) in (content["items"] as? [JSON] ?? []).enumerated() {
+                    guard let moduleItem = wrapper["item"] as? JSON,
+                        let itemContent = moduleItem["itemContent"] as? JSON
                     else { continue }
-                    tweets.append(feedTweet)
+                    let itemID = wrapper["entryId"] as? String ?? "\(entryID)-\(index)"
+                    if let item = feedItem(from: itemContent, entryID: itemID, context: moduleItem) {
+                        moduleEntries.append(item)
+                    }
                 }
                 let isConversation = (content["displayType"] as? String)?.contains("Conversation") ?? false
-                for (index, var tweet) in tweets.enumerated() {
+                func isTweet(_ index: Int) -> Bool {
+                    guard moduleEntries.indices.contains(index), case .tweet = moduleEntries[index] else {
+                        return false
+                    }
+                    return true
+                }
+                for (index, item) in moduleEntries.enumerated() {
+                    guard case .tweet(var tweet) = item else {
+                        append(item)
+                        continue
+                    }
                     if isConversation {
-                        tweet.connectsAbove = index > 0
-                        tweet.connectsBelow = index < tweets.count - 1
+                        tweet.connectsAbove = isTweet(index - 1)
+                        tweet.connectsBelow = isTweet(index + 1)
                     }
                     append(.tweet(tweet))
                 }
@@ -89,9 +107,10 @@ package enum TimelineParser {
         let type = (itemContent["itemType"] as? String) ?? (itemContent["__typename"] as? String)
         switch type {
         case "TimelineTweet":
-            guard let result = (itemContent["tweet_results"] as? JSON)?["result"] as? JSON,
-                let feedTweet = feedTweet(from: result)
-            else { return nil }
+            guard let result = (itemContent["tweet_results"] as? JSON)?["result"] as? JSON else { return nil }
+            guard let feedTweet = feedTweet(from: result) else {
+                return tombstone(from: result, id: entryID).map(FeedItem.tombstone)
+            }
             var item = feedTweet
             if let context = itemContent["socialContext"] as? JSON, let social = context["text"] as? String,
                 item.repostedBy == nil
@@ -114,9 +133,60 @@ package enum TimelineParser {
             return .tweet(item)
         case "TimelineNotification":
             return notification(from: itemContent, fallbackID: entryID).map(FeedItem.notification)
+        case "TimelineTombstone":
+            let info = itemContent["tombstoneInfo"] as? JSON
+            let text = ((info?["richText"] as? JSON)?["text"] as? String) ?? (info?["text"] as? String)
+            return .tombstone(tombstone(id: entryID, text: text))
+        case "TimelineTimelineCursor":
+            return showMoreCursor(from: itemContent, entryID: entryID).map(FeedItem.showMore)
         default:
             return nil
         }
+    }
+
+    /// "Show more replies" cursors inside conversations (`ShowMore`) and below them (`ShowMoreThreads…`).
+    static func showMoreCursor(from content: JSON, entryID: String) -> ShowMoreCursor? {
+        guard let type = content["cursorType"] as? String, type.hasPrefix("ShowMore"),
+            let value = content["value"] as? String
+        else { return nil }
+        let treatment = content["displayTreatment"] as? JSON
+        let label = (treatment?["actionText"] as? String) ?? (treatment?["labelText"] as? String)
+        return ShowMoreCursor(
+            id: entryID, cursor: value, label: label.flatMap { $0.isEmpty ? nil : $0 } ?? "Show more replies")
+    }
+
+    /// What Twitter shows in place of a post it won't return (deleted, withheld, suspended…): its own text when it
+    /// sends some, otherwise the reason code.
+    package static func tombstone(from result: JSON, id: String) -> Tombstone? {
+        switch result["__typename"] as? String {
+        case "TweetTombstone":
+            let tombstone = result["tombstone"] as? JSON
+            let text = ((tombstone?["text"] as? JSON)?["text"] as? String) ?? (tombstone?["text"] as? String)
+            return Self.tombstone(id: id, text: text)
+        case "TweetUnavailable":
+            let reason: Tombstone.Reason =
+                switch (result["reason"] as? String)?.lowercased() {
+                case "suspended": .suspended
+                case "protected": .protected
+                case "nsfwloggedout", "nsfw": .sensitive
+                default: .unavailable
+                }
+            return Tombstone(id: id, reason: reason)
+        case "TweetWithVisibilityResults":
+            return (result["tweet"] as? JSON).flatMap { tombstone(from: $0, id: id) }
+        default:
+            return nil
+        }
+    }
+
+    private static func tombstone(id: String, text: String?) -> Tombstone {
+        var text = (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if let range = text.range(of: "Learn more", options: [.caseInsensitive, .backwards, .anchored]) {
+            text = String(text[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        // Twitter capitalizes "Post" mid-sentence; the app always says "post".
+        text = text.replacingOccurrences(of: #"(?<=\S )Post(s?)\b"#, with: "post$1", options: .regularExpression)
+        return text.isEmpty ? Tombstone(id: id, reason: .unavailable) : Tombstone(id: id, text: text)
     }
 
     /// Recursively finds the first `instructions` array, whatever the operation's wrapper keys are.
@@ -168,10 +238,26 @@ package enum TimelineParser {
             ((legacy["extended_entities"] as? JSON)?["media"] as? [JSON])
             ?? ((legacy["entities"] as? JSON)?["media"] as? [JSON]) ?? []
 
+        var styles: [TextStyleRange] = []
+        var entities = legacy["entities"] as? JSON
         if let note = noteResult, let noteText = note["text"] as? String {
-            text = noteText
-            let urls = ((note["entity_set"] as? JSON)?["urls"] as? [JSON]) ?? []
-            text = expandURLs(in: text, urls: urls, links: &links)
+            entities = (note["entity_set"] as? JSON) ?? entities
+            let urls = (entities?["urls"] as? [JSON]) ?? []
+            var edits: [(String, String)] = []
+            for entry in urls {
+                guard let short = entry["url"] as? String else { continue }
+                let display = (entry["display_url"] as? String) ?? short
+                edits.append((short, display))
+                if let expanded = (entry["expanded_url"] as? String).flatMap(URL.init(string:)) {
+                    links[display] = expanded
+                }
+            }
+            for media in mediaEntities {
+                if let shortURL = media["url"] as? String { edits.append((shortURL, "")) }
+            }
+            edits += htmlEntities
+            let tags = ((note["richtext"] as? JSON)?["richtext_tags"] as? [JSON]) ?? []
+            (text, styles) = rewrite(noteText, replacing: edits, styles: tags.compactMap(textStyle(from:)))
         } else {
             text = legacy["full_text"] as? String ?? ""
             if let range = legacy["display_text_range"] as? [Int], range.count == 2 {
@@ -184,24 +270,35 @@ package enum TimelineParser {
             }
             let urls = ((legacy["entities"] as? JSON)?["urls"] as? [JSON]) ?? []
             text = expandURLs(in: text, urls: urls, links: &links)
+            for media in mediaEntities {
+                if let shortURL = media["url"] as? String { text = text.replacingOccurrences(of: shortURL, with: "") }
+            }
+            text = decodeEntities(text).trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        for media in mediaEntities {
-            if let shortURL = media["url"] as? String { text = text.replacingOccurrences(of: shortURL, with: "") }
-        }
-        text = decodeEntities(text).trimmingCharacters(in: .whitespacesAndNewlines)
 
         var tweet = Tweet(id: id, author: author, text: text, links: links)
+        tweet.styles = styles
+        tweet.hashtags = ((entities?["hashtags"] as? [JSON]) ?? []).compactMap {
+            ($0["text"] as? String).map { "#\($0)" }
+        }
+        tweet.cashtags = ((entities?["symbols"] as? [JSON]) ?? []).compactMap {
+            ($0["text"] as? String).map { "$\($0)" }
+        }
+        tweet.communityNote = communityNote(
+            from: (result["birdwatch_pivot"] as? JSON) ?? (raw["birdwatch_pivot"] as? JSON))
+        tweet.poll = poll(from: result["card"] as? JSON)
+        tweet.replyRestriction = replyRestriction(raw: raw, result: result, legacy: legacy, author: author)
         tweet.createdAt = (legacy["created_at"] as? String).flatMap(parseDate)
         tweet.replyCount = int(legacy["reply_count"])
-        tweet.retweetCount = int(legacy["retweet_count"])
+        tweet.repostCount = int(legacy["retweet_count"])
         tweet.likeCount = int(legacy["favorite_count"])
         tweet.quoteCount = int(legacy["quote_count"])
         tweet.bookmarkCount = int(legacy["bookmark_count"])
         tweet.viewCount = ((result["views"] as? JSON)?["count"] as? String).flatMap(Int.init)
         tweet.isLiked = legacy["favorited"] as? Bool ?? false
-        tweet.isRetweeted = legacy["retweeted"] as? Bool ?? false
+        tweet.isReposted = legacy["retweeted"] as? Bool ?? false
         tweet.isBookmarked = legacy["bookmarked"] as? Bool ?? false
-        tweet.conversationId = legacy["conversation_id_str"] as? String
+        tweet.conversationID = legacy["conversation_id_str"] as? String
         tweet.media = mediaEntities.compactMap(media(from:))
         tweet.card = card(from: result["card"] as? JSON)
 
@@ -214,16 +311,20 @@ package enum TimelineParser {
             tweet.replyingTo = Array(names.prefix(3))
         }
 
-        if includeQuote, let quoted = (result["quoted_status_result"] as? JSON)?["result"] as? JSON,
-            let quotedTweet = Self.tweet(from: quoted, includeQuote: false)
-        {
-            tweet.quoted = [quotedTweet]
+        if includeQuote, let quoted = (result["quoted_status_result"] as? JSON)?["result"] as? JSON {
+            if let quotedTweet = Self.tweet(from: quoted, includeQuote: false) {
+                tweet.quoted = [quotedTweet]
+            } else {
+                let quotedID = (quoted["rest_id"] as? String) ?? "\(tweet.id)-quote"
+                tweet.quotedTombstone =
+                    tombstone(from: quoted, id: quotedID) ?? Tombstone(id: quotedID, reason: .unavailable)
+            }
             if let permalink = (legacy["quoted_status_permalink"] as? JSON)?["url"] as? String {
                 tweet.text = tweet.text.replacingOccurrences(of: permalink, with: "").trimmingCharacters(
                     in: .whitespacesAndNewlines)
             }
         }
-        if tweet.card != nil || !tweet.quoted.isEmpty {
+        if tweet.card != nil || !tweet.quoted.isEmpty || tweet.quotedTombstone != nil {
             // The card/quote already shows the trailing link; drop it from the text when it is the last token.
             if let last = tweet.links.first(where: {
                 tweet.text.hasSuffix($0.key)
@@ -246,6 +347,174 @@ package enum TimelineParser {
             }
         }
         return text
+    }
+
+    private static let htmlEntities = [
+        ("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&#39;", "'"), ("&amp;", "&")
+    ]
+
+    /// Replaces substrings of `text` while keeping `styles` (Unicode-scalar ranges) pointing at the same characters,
+    /// then trims surrounding whitespace.
+    static func rewrite(
+        _ text: String, replacing replacements: [(String, String)], styles: [TextStyleRange]
+    ) -> (String, [TextStyleRange]) {
+        let scalars = Array(text.unicodeScalars)
+        var edits: [(range: Range<Int>, replacement: [Unicode.Scalar])] = []
+        for (target, replacement) in replacements.sorted(by: { $0.0.unicodeScalars.count > $1.0.unicodeScalars.count })
+        where !target.isEmpty {
+            let needle = Array(target.unicodeScalars)
+            var index = 0
+            while index + needle.count <= scalars.count {
+                let range = index..<(index + needle.count)
+                if scalars[range].elementsEqual(needle), !edits.contains(where: { $0.range.overlaps(range) }) {
+                    edits.append((range, Array(replacement.unicodeScalars)))
+                    index += needle.count
+                } else {
+                    index += 1
+                }
+            }
+        }
+        edits.sort { $0.range.lowerBound < $1.range.lowerBound }
+
+        var output: [Unicode.Scalar] = []
+        var applied: [(old: Range<Int>, new: Range<Int>)] = []
+        var cursor = 0
+        for edit in edits {
+            output += scalars[cursor..<edit.range.lowerBound]
+            let start = output.count
+            output += edit.replacement
+            applied.append((edit.range, start..<output.count))
+            cursor = edit.range.upperBound
+        }
+        output += scalars[cursor...]
+
+        func map(_ index: Int, isUpper: Bool) -> Int {
+            var delta = 0
+            for edit in applied {
+                if index >= edit.old.upperBound {
+                    delta = edit.new.upperBound - edit.old.upperBound
+                } else if index > edit.old.lowerBound {
+                    return isUpper ? edit.new.upperBound : edit.new.lowerBound
+                } else {
+                    break
+                }
+            }
+            return index + delta
+        }
+
+        let leading = output.prefix { $0.properties.isWhitespace }.count
+        let trailing = output.count == leading ? 0 : output.reversed().prefix { $0.properties.isWhitespace }.count
+        let trimmed = Array(output[leading..<(output.count - trailing)])
+        let mapped = styles.compactMap { style -> TextStyleRange? in
+            let lower = min(max(map(style.range.lowerBound, isUpper: false) - leading, 0), trimmed.count)
+            let upper = min(max(map(style.range.upperBound, isUpper: true) - leading, lower), trimmed.count)
+            guard lower < upper else { return nil }
+            var style = style
+            style.range = lower..<upper
+            return style
+        }
+        var view = String.UnicodeScalarView()
+        view.append(contentsOf: trimmed)
+        return (String(view), mapped)
+    }
+
+    private static func textStyle(from tag: JSON) -> TextStyleRange? {
+        let from = int(tag["from_index"])
+        let to = int(tag["to_index"])
+        let types = (tag["richtext_types"] as? [String] ?? []).map { $0.lowercased() }
+        guard from >= 0, to > from, types.contains("bold") || types.contains("italic") else { return nil }
+        return TextStyleRange(range: from..<to, isBold: types.contains("bold"), isItalic: types.contains("italic"))
+    }
+
+    /// `birdwatch_pivot`: the "Readers added context" note shown under a post.
+    static func communityNote(from pivot: JSON?) -> CommunityNote? {
+        guard let pivot else { return nil }
+        let subtitle = pivot["subtitle"] as? JSON
+        guard let text = (subtitle?["text"] as? String) ?? (pivot["subtitle"] as? String), !text.isEmpty else {
+            return nil
+        }
+        var links: [String: URL] = [:]
+        let scalars = Array(text.unicodeScalars)
+        for entity in subtitle?["entities"] as? [JSON] ?? [] {
+            let from = int(entity["fromIndex"])
+            let to = int(entity["toIndex"])
+            guard from >= 0, to > from, to <= scalars.count,
+                let url = ((entity["ref"] as? JSON)?["url"] as? String).flatMap(URL.init(string:))
+            else { continue }
+            var view = String.UnicodeScalarView()
+            view.append(contentsOf: scalars[from..<to])
+            links[String(view)] = url
+        }
+        let footer = pivot["footer"] as? JSON
+        return CommunityNote(
+            id: (pivot["note"] as? JSON)?["rest_id"] as? String,
+            title: (pivot["title"] as? String) ?? "Readers added context they thought people might want to know",
+            shortTitle: pivot["shorttitle"] as? String,
+            text: decodeEntities(text),
+            links: links,
+            // The footer names the service ("people who use X"); the app always says Twitter.
+            footer: ((footer?["text"] as? String) ?? (pivot["footer"] as? String))?.replacingOccurrences(
+                of: #"\bX\b"#, with: "Twitter", options: .regularExpression),
+            destinationURL: ((pivot["destinationUrl"] as? String) ?? (footer?["destinationUrl"] as? String))
+                .flatMap(URL.init(string:))
+        )
+    }
+
+    /// Text-only and image polls (`poll2choice_text_only` … `poll4choice_image`).
+    static func poll(from card: JSON?) -> Poll? {
+        guard let legacy = card?["legacy"] as? JSON,
+            let name = legacy["name"] as? String,
+            name.hasPrefix("poll"), name.contains("choice"),
+            let bindings = legacy["binding_values"] as? [JSON]
+        else { return nil }
+        var values: [String: JSON] = [:]
+        for binding in bindings {
+            if let key = binding["key"] as? String, let value = binding["value"] as? JSON { values[key] = value }
+        }
+        var choices: [Poll.Choice] = []
+        for index in 1...4 {
+            guard let label = values["choice\(index)_label"]?["string_value"] as? String else { break }
+            choices.append(Poll.Choice(label: label, count: int(values["choice\(index)_count"]?["string_value"])))
+        }
+        guard !choices.isEmpty else { return nil }
+        let selected = (values["selected_choice"]?["string_value"] as? String).flatMap(Int.init)
+        return Poll(
+            choices: choices,
+            endsAt: (values["end_datetime_utc"]?["string_value"] as? String).flatMap(isoDate),
+            countsAreFinal: values["counts_are_final"]?["boolean_value"] as? Bool ?? false,
+            selectedChoiceIndex: selected.flatMap { (1...choices.count).contains($0) ? $0 - 1 : nil },
+            imageURL: ((values["image_large"]?["image_value"] as? JSON)?["url"] as? String)
+                .flatMap(URL.init(string:))
+        )
+    }
+
+    /// `conversation_control` (the author's reply policy) and `limitedActionResults` (whether the viewer may reply).
+    static func replyRestriction(raw: JSON, result: JSON, legacy: JSON, author: User) -> ReplyRestriction? {
+        let control = (legacy["conversation_control"] as? JSON) ?? (result["conversation_control"] as? JSON)
+        let limited =
+            ((raw["limitedActionResults"] as? JSON) ?? (result["limitedActionResults"] as? JSON))?["limited_actions"]
+            as? [JSON] ?? []
+        let replyLimit = limited.first { ($0["action"] as? String) == "Reply" }
+        guard control != nil || replyLimit != nil else { return nil }
+
+        let policy: ReplyRestriction.Policy =
+            switch (control?["policy"] as? String)?.lowercased() {
+            case "byinvitation", "mentioned": .mentioned
+            case "community", "following", "followers": .following
+            case "verified": .verified
+            case "subscribers", "superfollowers": .subscribers
+            default: .other
+            }
+        let ownerResult = (control?["conversation_owner_results"] as? JSON)?["result"] as? JSON
+        let ownerCore = ownerResult?["core"] as? JSON
+        let ownerLegacy = ownerResult?["legacy"] as? JSON
+        let owner =
+            (ownerCore?["screen_name"] as? String) ?? (ownerLegacy?["screen_name"] as? String) ?? author.screenName
+        let prompt = replyLimit?["prompt"] as? JSON
+        let promptText =
+            ((prompt?["subtext"] as? JSON)?["text"] as? String) ?? ((prompt?["headline"] as? JSON)?["text"] as? String)
+        return ReplyRestriction(
+            policy: policy, ownerScreenName: owner, viewerCanReply: replyLimit == nil, prompt: promptText)
     }
 
     private static func media(from entry: JSON) -> Media? {
@@ -366,9 +635,19 @@ package enum TimelineParser {
             ((result["privacy"] as? JSON)?["protected"] as? Bool) ?? (legacy["protected"] as? Bool ?? false)
         let relationship = result["relationship_perspectives"] as? JSON
         user.isFollowing = (relationship?["following"] as? Bool) ?? (legacy["following"] as? Bool ?? false)
-        user.followsYou = (relationship?["followed_by"] as? Bool) ?? (legacy["followed_by"] as? Bool ?? false)
+        user.followsViewer = (relationship?["followed_by"] as? Bool) ?? (legacy["followed_by"] as? Bool ?? false)
         user.isMuting = (relationship?["muting"] as? Bool) ?? (legacy["muting"] as? Bool ?? false)
         user.isBlocking = (relationship?["blocking"] as? Bool) ?? (legacy["blocking"] as? Bool ?? false)
+        user.blocksViewer = (relationship?["blocked_by"] as? Bool) ?? (legacy["blocked_by"] as? Bool ?? false)
+        if let label = (result["affiliates_highlighted_label"] as? JSON)?["label"] as? JSON,
+            let description = label["description"] as? String
+        {
+            user.affiliate = AffiliateLabel(
+                description: description,
+                badgeURL: ((label["badge"] as? JSON)?["url"] as? String).flatMap(URL.init(string:)),
+                url: ((label["url"] as? JSON)?["url"] as? String).flatMap(URL.init(string:))
+            )
+        }
         user.pinnedTweetID =
             ((result["pinned_items"] as? JSON)?["tweet_ids_str"] as? [String])?.first
             ?? (legacy["pinned_tweet_ids_str"] as? [String])?.first

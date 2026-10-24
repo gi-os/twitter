@@ -10,9 +10,11 @@ import SwiftUI
 
 @main
 struct TwitterApp: App {
+    init() {
+        bootstrapTwitter()
+    }
+
     var body: some Scene {
-        WindowGroup {
-            AppView()
-        }
+        TwitterScenes()
     }
 }

@@ -18,9 +18,12 @@ package struct User: Identifiable, Hashable, Codable, Sendable {
     package var verifiedType: String?
     package var isProtected: Bool = false
     package var isFollowing: Bool = false
-    package var followsYou: Bool = false
+    package var followsViewer: Bool = false
     package var isMuting: Bool = false
     package var isBlocking: Bool = false
+    /// The account blocked the viewer.
+    package var blocksViewer: Bool = false
+    package var affiliate: AffiliateLabel?
     package var pinnedTweetID: String?
     package var joined: Date?
 
@@ -75,26 +78,38 @@ package struct Tweet: Identifiable, Hashable, Codable, Sendable {
     package var links: [String: URL] = [:]
     package var createdAt: Date?
     package var replyCount = 0
-    package var retweetCount = 0
+    package var repostCount = 0
     package var likeCount = 0
     package var quoteCount = 0
     package var bookmarkCount = 0
     package var viewCount: Int?
     package var isLiked = false
-    package var isRetweeted = false
+    package var isReposted = false
     package var isBookmarked = false
     package var media: [Media] = []
     /// Zero or one quoted post (an array keeps the struct non-recursive).
     package var quoted: [Tweet] = []
     package var card: LinkCard?
     package var replyingTo: [String] = []
-    package var conversationId: String?
+    package var conversationID: String?
+    /// Bold/italic ranges of a long post's text.
+    package var styles: [TextStyleRange] = []
+    /// Hashtags and cashtags (with their `#`/`$`) Twitter recognized in `text`.
+    package var hashtags: [String] = []
+    package var cashtags: [String] = []
+    package var communityNote: CommunityNote?
+    package var poll: Poll?
+    package var replyRestriction: ReplyRestriction?
+    /// Shown in place of a quoted post Twitter won't show ("This post is unavailable").
+    package var quotedTombstone: Tombstone?
+
+    package var viewerCanReply: Bool { replyRestriction?.viewerCanReply ?? true }
 
     package var url: URL { URL(string: "https://x.com/\(author.screenName)/status/\(id)")! }
 }
 
 /// A post as it appears in a feed, with the context of how it got there.
-package struct FeedTweet: Identifiable, Hashable, Sendable {
+package struct FeedTweet: Identifiable, Hashable, Codable, Sendable {
     package var id: String
     package var tweet: Tweet
     package var repostedBy: User?
@@ -106,7 +121,7 @@ package struct FeedTweet: Identifiable, Hashable, Sendable {
     package var connectsAbove = false
 }
 
-package struct TwitterNotification: Identifiable, Hashable, Sendable {
+package struct TwitterNotification: Identifiable, Hashable, Codable, Sendable {
     package var id: String
     package var icon: String
     package var message: String
@@ -118,14 +133,18 @@ package struct TwitterNotification: Identifiable, Hashable, Sendable {
     package var tweetID: String?
 }
 
-package enum FeedItem: Identifiable, Hashable, Sendable {
+package enum FeedItem: Identifiable, Hashable, Codable, Sendable {
     case tweet(FeedTweet)
     case notification(TwitterNotification)
+    case tombstone(Tombstone)
+    case showMore(ShowMoreCursor)
 
     package var id: String {
         switch self {
         case .tweet(let item): "t-\(item.id)"
         case .notification(let item): "n-\(item.id)"
+        case .tombstone(let item): "x-\(item.id)"
+        case .showMore(let item): "s-\(item.id)"
         }
     }
 }

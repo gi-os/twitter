@@ -19,7 +19,7 @@ package struct SignInFeature {
         case pageLoadingChanged(Bool)
         case sessionCaptured([String: String])
         case signInResponse(Result<User, any Error>)
-        case tryAgainButtonTapped
+        case retryButtonTapped
 
         package enum Delegate {
             case signedIn(User)
@@ -56,7 +56,7 @@ package struct SignInFeature {
                 state.errorMessage = error.localizedDescription
                 return .none
 
-            case .tryAgainButtonTapped:
+            case .retryButtonTapped:
                 state.errorMessage = nil
                 state.attempt += 1
                 return .none

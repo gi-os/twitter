@@ -46,6 +46,8 @@ package struct ComposeFeature {
                 return .none
 
             case .cancelButtonTapped:
+                // Dismissing cancels the in-flight post effect, which could leave a post sent but unconfirmed.
+                guard !state.isPosting else { return .none }
                 return .run { _ in await dismiss() }
 
             case .postButtonTapped:

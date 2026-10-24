@@ -9,14 +9,17 @@ actor TwitterWebSession {
     /// The public bearer token embedded in x.com's web client for every visitor (not a secret).
     static let webBearer =
         "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
+    /// How long a catalog is used before it's rebuilt in the background.
     private static let catalogLifetime: TimeInterval = 6 * 3600
+    /// How long a saved catalog is used at all. Query IDs rotate every few weeks, and a rotated one forces a rebuild.
+    private static let catalogMaximumAge: TimeInterval = 7 * 24 * 3600
 
     private let log = Logger(subsystem: "gold.samhenri.Twitter", category: "api")
     private let session: URLSession
     private var cookies: [String: String]
     private let onCookiesChanged: @Sendable ([String: String]) -> Void
     private var catalog: CatalogSnapshot?
-    private var catalogTask: Task<CatalogSnapshot, Error>?
+    private var catalogTask: Task<CatalogSnapshot, Never>?
     /// Debug-only logged-out mode used to preview the UI with public data.
     private var guestToken: String?
 
@@ -46,27 +49,36 @@ actor TwitterWebSession {
         return dir.appending(path: "web-client-catalog.json")
     }
 
+    /// The catalog to make requests with. Building one downloads and scans megabytes of x.com's JavaScript, so a
+    /// saved catalog is used for days, stale-while-revalidate: past `catalogLifetime` it's rebuilt in the background
+    /// while requests keep going with it, and `graphQLData` forces a rebuild if Twitter has rotated an ID meanwhile.
+    /// Only a launch with nothing usable on disk waits for a build.
     func currentCatalog(forceRefresh: Bool = false) async throws -> CatalogSnapshot {
-        if !forceRefresh, let catalog, Date.now.timeIntervalSince(catalog.createdAt) < Self.catalogLifetime {
-            return catalog
+        if !forceRefresh {
+            if catalog == nil { catalog = Self.savedCatalog() }
+            if let catalog {
+                let age = Date.now.timeIntervalSince(catalog.createdAt)
+                if age < Self.catalogMaximumAge {
+                    if age >= Self.catalogLifetime { _ = catalogBuild() }
+                    return catalog
+                }
+            }
         }
-        if !forceRefresh, catalog == nil,
-            let data = try? Data(contentsOf: Self.catalogFile),
-            let cached = try? JSONDecoder().decode(CatalogSnapshot.self, from: data),
-            Date.now.timeIntervalSince(cached.createdAt) < Self.catalogLifetime
-        {
-            catalog = cached
-            return cached
-        }
-        if let catalogTask { return try await catalogTask.value }
+        return await catalogBuild().value
+    }
 
-        let task = Task { () throws -> CatalogSnapshot in
-            try await CatalogBuilder.build { url in try await self.fetchText(url) }
-        }
+    /// Joins the build in flight, or starts one.
+    private func catalogBuild() -> Task<CatalogSnapshot, Never> {
+        if let catalogTask { return catalogTask }
+        let task = Task { await buildCatalog() }
         catalogTask = task
+        return task
+    }
+
+    private func buildCatalog() async -> CatalogSnapshot {
         defer { catalogTask = nil }
         do {
-            let snapshot = try await task.value
+            let snapshot = try await CatalogBuilder.build { url in try await self.fetchText(url) }
             catalog = snapshot
             if let data = try? JSONEncoder().encode(snapshot) {
                 try? data.write(to: Self.catalogFile, options: .atomic)
@@ -82,6 +94,11 @@ actor TwitterWebSession {
             catalog = fallback
             return fallback
         }
+    }
+
+    private static func savedCatalog() -> CatalogSnapshot? {
+        guard let data = try? Data(contentsOf: catalogFile) else { return nil }
+        return try? JSONDecoder().decode(CatalogSnapshot.self, from: data)
     }
 
     private func fetchText(_ url: URL) async throws -> String {
@@ -153,13 +170,25 @@ actor TwitterWebSession {
     }
 
     private func perform(_ request: URLRequest) async throws -> (Any, Int) {
+        let (data, http) = try await send(request)
+        if (200..<300).contains(http.statusCode) {
+            return ((try? JSONSerialization.jsonObject(with: data)) ?? [:], http.statusCode)
+        }
+        return (try Self.failure(data, http), http.statusCode)
+    }
+
+    /// Sends a request and absorbs any rotated cookies, leaving the body undecoded.
+    private func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw TwitterError.http(0, "No response") }
         absorbCookies(from: http)
+        return (data, http)
+    }
+
+    /// Inspects a non-2xx response: throws for auth and rate-limit failures, otherwise returns the error JSON.
+    private static func failure(_ data: Data, _ http: HTTPURLResponse) throws -> Any {
         let json = try? JSONSerialization.jsonObject(with: data)
         switch http.statusCode {
-        case 200..<300:
-            return (json ?? [:], http.statusCode)
         case 401:
             throw TwitterError.unauthorized
         case 429:
@@ -173,7 +202,7 @@ actor TwitterWebSession {
             {
                 throw TwitterError.unauthorized
             }
-            return (json ?? ["__status": http.statusCode, "__message": message], http.statusCode)
+            return json ?? ["__status": http.statusCode, "__message": message]
         }
     }
 
@@ -181,9 +210,37 @@ actor TwitterWebSession {
         ((json as? [String: Any])?["errors"] as? [[String: Any]] ?? []).compactMap { $0["message"] as? String }
     }
 
-    /// Runs a GraphQL operation with variables, retrying once with a fresh catalog when Twitter has
-    /// rotated query IDs (404) or added required feature flags (400).
+    /// Parses a 2xx GraphQL body, throwing when it carries errors and no data.
+    private static func graphQLJSON(_ data: Data) throws -> Any {
+        let json = (try? JSONSerialization.jsonObject(with: data)) ?? [:]
+        if (json as? [String: Any])?["data"] == nil, let message = errorMessages(json).first {
+            throw TwitterError.api(message)
+        }
+        return json
+    }
+
+    /// Parses a timeline body off the session actor, so large pages don't hold up other requests.
+    @concurrent private static func decodePage(_ data: Data) async throws -> FeedPage {
+        TimelineParser.page(from: try graphQLJSON(data))
+    }
+
+    /// Runs a GraphQL operation and returns its parsed JSON.
     func graphQL(_ operation: String, variables: [String: JSONValue], usePOST: Bool? = nil) async throws -> Any {
+        try Self.graphQLJSON(try await graphQLData(operation, variables: variables, usePOST: usePOST))
+    }
+
+    /// Runs a GraphQL timeline operation, decoding the page off the session actor.
+    func graphQLPage(_ operation: String, variables: [String: JSONValue], usePOST: Bool? = nil) async throws
+        -> FeedPage
+    {
+        try await Self.decodePage(try await graphQLData(operation, variables: variables, usePOST: usePOST))
+    }
+
+    /// Runs a GraphQL operation with variables, retrying once with a fresh catalog when Twitter has
+    /// rotated query IDs (404) or added required feature flags (400). Returns the undecoded 2xx body.
+    private func graphQLData(_ operation: String, variables: [String: JSONValue], usePOST: Bool?) async throws
+        -> Data
+    {
         var extraFeatures: [String: JSONValue] = [:]
         var refreshed = false
         var forceRefresh = false
@@ -234,18 +291,14 @@ actor TwitterWebSession {
             }
 
             let started = Date.now
-            let (json, status) = try await perform(request)
+            let (data, http) = try await send(request)
+            let status = http.statusCode
             log.notice(
                 "\(operation, privacy: .public) → HTTP \(status) in \(Int(Date.now.timeIntervalSince(started) * 1000))ms"
             )
-            if (200..<300).contains(status) {
-                let object = json as? [String: Any]
-                if object?["data"] == nil, let message = Self.errorMessages(json).first {
-                    throw TwitterError.api(message)
-                }
-                return json
-            }
+            if (200..<300).contains(status) { return data }
 
+            let json = try Self.failure(data, http)
             let message = Self.errorMessages(json).first ?? ((json as? [String: Any])?["__message"] as? String ?? "")
             log.error("\(operation, privacy: .public) failed: HTTP \(status) \(message, privacy: .public)")
             if status == 400, let range = message.range(of: "cannot be null:") {
@@ -323,9 +376,8 @@ actor TwitterWebSession {
         ]
         if let cursor { variables["cursor"] = .string(cursor) }
         if !following { variables["seenTweetIds"] = [] }
-        let json = try await graphQL(
+        return try await graphQLPage(
             following ? "HomeLatestTimeline" : "HomeTimeline", variables: variables, usePOST: true)
-        return TimelineParser.page(from: json)
     }
 
     func tweetDetail(id: String, cursor: String?) async throws -> FeedPage {
@@ -338,7 +390,7 @@ actor TwitterWebSession {
             variables["cursor"] = .string(cursor)
             variables["referrer"] = "tweet"
         }
-        return TimelineParser.page(from: try await graphQL("TweetDetail", variables: variables))
+        return try await graphQLPage("TweetDetail", variables: variables)
     }
 
     func userTweets(userID: String, cursor: String?) async throws -> FeedPage {
@@ -347,7 +399,7 @@ actor TwitterWebSession {
             "withQuickPromoteEligibilityTweetFields": true, "withVoice": true
         ]
         if let cursor { variables["cursor"] = .string(cursor) }
-        return TimelineParser.page(from: try await graphQL("UserTweets", variables: variables))
+        return try await graphQLPage("UserTweets", variables: variables)
     }
 
     func userReplies(userID: String, cursor: String?) async throws -> FeedPage {
@@ -356,7 +408,7 @@ actor TwitterWebSession {
             "withVoice": true
         ]
         if let cursor { variables["cursor"] = .string(cursor) }
-        return TimelineParser.page(from: try await graphQL("UserTweetsAndReplies", variables: variables))
+        return try await graphQLPage("UserTweetsAndReplies", variables: variables)
     }
 
     func userMedia(userID: String, cursor: String?) async throws -> FeedPage {
@@ -365,7 +417,7 @@ actor TwitterWebSession {
             "withClientEventToken": false, "withBirdwatchNotes": false, "withVoice": true
         ]
         if let cursor { variables["cursor"] = .string(cursor) }
-        return TimelineParser.page(from: try await graphQL("UserMedia", variables: variables))
+        return try await graphQLPage("UserMedia", variables: variables)
     }
 
     func likes(userID: String, cursor: String?) async throws -> FeedPage {
@@ -374,7 +426,7 @@ actor TwitterWebSession {
             "withClientEventToken": false, "withBirdwatchNotes": false, "withVoice": true
         ]
         if let cursor { variables["cursor"] = .string(cursor) }
-        return TimelineParser.page(from: try await graphQL("Likes", variables: variables))
+        return try await graphQLPage("Likes", variables: variables)
     }
 
     func deleteTweet(id: String) async throws {
@@ -408,19 +460,19 @@ actor TwitterWebSession {
             "withGrokTranslatedBio": false
         ]
         if let cursor { variables["cursor"] = .string(cursor) }
-        return TimelineParser.page(from: try await graphQL("SearchTimeline", variables: variables))
+        return try await graphQLPage("SearchTimeline", variables: variables)
     }
 
     func bookmarks(cursor: String?) async throws -> FeedPage {
         var variables: [String: JSONValue] = ["count": 20, "includePromotedContent": false]
         if let cursor { variables["cursor"] = .string(cursor) }
-        return TimelineParser.page(from: try await graphQL("Bookmarks", variables: variables))
+        return try await graphQLPage("Bookmarks", variables: variables)
     }
 
     func notifications(type: String = "All", cursor: String?) async throws -> FeedPage {
         var variables: [String: JSONValue] = ["timeline_type": .string(type), "count": 20]
         if let cursor { variables["cursor"] = .string(cursor) }
-        return TimelineParser.page(from: try await graphQL("NotificationsTimeline", variables: variables))
+        return try await graphQLPage("NotificationsTimeline", variables: variables)
     }
 
     func setLiked(_ liked: Bool, tweetID: String) async throws {

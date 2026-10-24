@@ -41,6 +41,8 @@ package actor SyncCoordinator {
     package func sync(_ tweetID: String, _ interaction: Interaction) async {
         let key = Key(interaction: interaction, tweetID: tweetID)
         guard running.insert(key).inserted else { return }
+        // Unstructured on purpose: leaving the screen cancels the calling effect, but a started engagement must still
+        // sync.
         await Task { await run(key) }.value
     }
 

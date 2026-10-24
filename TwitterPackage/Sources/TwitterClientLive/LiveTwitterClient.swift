@@ -1,6 +1,7 @@
 import Dependencies
 import Foundation
 import Models
+import Synchronization
 import TwitterClient
 
 extension TwitterClient: DependencyKey {
@@ -22,6 +23,7 @@ extension TwitterClient: DependencyKey {
                 return try await session.post(text: text, replyTo: replyTo, mediaIDs: mediaIDs, quoteURL: quoteURL)
             },
             restoreSession: { try await store.restore() },
+            setBlocking: { try await store.session().setBlocked($0, userID: $1) },
             setBookmarked: { try await store.session().setBookmarked($0, tweetID: $1) },
             setFollowing: { try await store.session().setFollowing($0, userID: $1) },
             setLiked: { try await store.session().setLiked($0, tweetID: $1) },
@@ -35,37 +37,94 @@ extension TwitterClient: DependencyKey {
 
 private actor SessionStore {
     private var current: TwitterWebSession?
+    private let vault = CookieVault()
+    private var restoring: Task<User?, any Error>?
+    private var viewer: User?
 
+    /// Every window restores on launch; concurrent calls share one round trip and later calls reuse its result.
     func restore() async throws -> User? {
-        guard let cookies = Keychain.loadCookies() else { return nil }
-        let session = makeSession(cookies: cookies)
+        if current != nil, let viewer { return viewer }
+        if let restoring { return try await restoring.value }
+        let task = Task { try await performRestore() }
+        restoring = task
+        defer { restoring = nil }
+        return try await task.value
+    }
+
+    func signIn(cookies: [String: String]) async throws -> User {
+        let session = makeSession(cookies: cookies, saving: true)
+        let viewer = try await session.viewer()
+        // The actor is reentrant: a sign-out or newer sign-in during `viewer()` supersedes this one.
+        guard current === session else { throw TwitterError.notSignedIn }
+        self.viewer = viewer
+        return viewer
+    }
+
+    func signOut() {
+        current = nil
+        viewer = nil
+        vault.clear()
+    }
+
+    /// The signed-in session, picked up from the Keychain if this launch hasn't made one yet. Requests don't wait for
+    /// `restore` to validate it: the app shows a remembered account at launch, and its timelines load in parallel.
+    func session() throws -> TwitterWebSession {
+        if let current { return current }
+        guard let cookies = Keychain.loadCookies() else { throw TwitterError.notSignedIn }
+        return makeSession(cookies: cookies, saving: false)
+    }
+
+    private func performRestore() async throws -> User? {
+        guard let session = try? session() else { return nil }
         do {
-            return try await session.viewer()
+            let viewer = try await session.viewer()
+            // The actor is reentrant: a sign-in or sign-out during `viewer()` supersedes this restore.
+            guard current === session else { return self.viewer }
+            self.viewer = viewer
+            return viewer
         } catch TwitterError.unauthorized {
+            guard current === session else { return self.viewer }
             signOut()
             return nil
         }
     }
 
-    func signIn(cookies: [String: String]) async throws -> User {
-        Keychain.saveCookies(cookies)
-        return try await makeSession(cookies: cookies).viewer()
-    }
-
-    func signOut() {
-        current = nil
-        Keychain.deleteCookies()
-    }
-
-    func session() throws -> TwitterWebSession {
-        guard let current else { throw TwitterError.notSignedIn }
-        return current
-    }
-
-    private func makeSession(cookies: [String: String]) -> TwitterWebSession {
-        let session = TwitterWebSession(cookies: cookies) { Keychain.saveCookies($0) }
+    private func makeSession(cookies: [String: String], saving: Bool) -> TwitterWebSession {
+        let generation = vault.begin(saving: saving ? cookies : nil)
+        let session = TwitterWebSession(cookies: cookies) { [vault] cookies in
+            vault.save(cookies, generation: generation)
+        }
         current = session
         return session
+    }
+}
+
+/// Persists session cookies in call order. Each session gets a generation; a superseded or signed-out session's
+/// rotations are dropped, so a stale session can never write its cookies back over a newer one.
+private final class CookieVault: Sendable {
+    private let generation = Mutex(0)
+
+    /// Starts a new generation (optionally saving its initial cookies) and returns it.
+    func begin(saving cookies: [String: String]?) -> Int {
+        generation.withLock { generation in
+            generation += 1
+            if let cookies { Keychain.saveCookies(cookies) }
+            return generation
+        }
+    }
+
+    func save(_ cookies: [String: String], generation: Int) {
+        self.generation.withLock { current in
+            guard current == generation else { return }
+            Keychain.saveCookies(cookies)
+        }
+    }
+
+    func clear() {
+        generation.withLock { generation in
+            generation += 1
+            Keychain.deleteCookies()
+        }
     }
 }
 

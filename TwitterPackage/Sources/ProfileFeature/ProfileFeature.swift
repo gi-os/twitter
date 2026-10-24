@@ -3,6 +3,7 @@ import FeedFeature
 import Models
 import Routing
 import TwitterClient
+import TwitterDatabase
 import TwitterUI
 
 @Reducer
@@ -13,7 +14,9 @@ package struct ProfileFeature {
         var feeds: FeedsFeature.State?
         var hasFetchedUser = false
         var isViewer = false
-        let screenName: String
+        /// The viewer asked to see the posts of someone they blocked.
+        var isShowingBlockedPosts = false
+        package let screenName: String
         var user: User?
 
         package init(user: User, isViewer: Bool = false) {
@@ -37,22 +40,54 @@ package struct ProfileFeature {
     }
 
     package enum Action {
+        case blockButtonTapped
+        /// Carries the value to restore, so a failure that lands after another tap can't flip the wrong way.
+        case blockFailed(isBlocking: Bool)
+        case cachedUserLoaded(User)
         case delegate(ContentDelegate)
         case feeds(FeedsFeature.Action)
         case followButtonTapped
-        case followFailed
+        case followFailed(isFollowing: Bool)
         case signOutButtonTapped
         case task
         case userResponse(Result<User, any Error>)
+        case viewPostsButtonTapped
     }
 
     @Dependency(TwitterClient.self) var client
+    @Dependency(TimelineCache.self) var timelineCache
 
     package init() {}
 
     package var body: some Reducer<State, Action> {
         Reduce { state, action in
             switch action {
+            case .blockButtonTapped:
+                guard var user = state.user else { return .none }
+                user.isBlocking.toggle()
+                state.user = user
+                state.isShowingBlockedPosts = false
+                return .run { [user] _ in
+                    try await client.setBlocking(user.isBlocking, user.id)
+                } catch: { [user] _, send in
+                    await send(.blockFailed(isBlocking: !user.isBlocking))
+                }
+
+            case .blockFailed(let isBlocking):
+                state.user?.isBlocking = isBlocking
+                return .none
+
+            case .viewPostsButtonTapped:
+                state.isShowingBlockedPosts = true
+                return .none
+
+            case .cachedUserLoaded(let user):
+                // A profile opened by handle draws its header from the last visit until the network answers.
+                guard state.user == nil else { return .none }
+                state.user = user
+                state.feeds = State.feeds(for: user, isViewer: state.isViewer)
+                return .none
+
             case .delegate:
                 return .none
 
@@ -69,14 +104,14 @@ package struct ProfileFeature {
                 state.user = user
                 return .run { [user] _ in
                     try await client.setFollowing(user.isFollowing, user.id)
-                } catch: { _, send in
-                    await send(.followFailed)
+                } catch: { [user] _, send in
+                    await send(.followFailed(isFollowing: !user.isFollowing))
                 }
 
-            case .followFailed:
-                guard var user = state.user else { return .none }
-                user.isFollowing.toggle()
-                user.followersCount += user.isFollowing ? 1 : -1
+            case .followFailed(let isFollowing):
+                guard var user = state.user, user.isFollowing != isFollowing else { return .none }
+                user.isFollowing = isFollowing
+                user.followersCount += isFollowing ? 1 : -1
                 state.user = user
                 return .none
 
@@ -86,7 +121,11 @@ package struct ProfileFeature {
             case .task:
                 guard !state.hasFetchedUser else { return .none }
                 let screenName = state.screenName
+                let readsCache = state.user == nil
                 return .run { send in
+                    if readsCache, let cached = try? await timelineCache.user(screenName) {
+                        await send(.cachedUserLoaded(cached))
+                    }
                     await send(.userResponse(Result { try await client.user(screenName) }))
                 }
 
@@ -97,7 +136,9 @@ package struct ProfileFeature {
                 if state.feeds == nil {
                     state.feeds = State.feeds(for: user, isViewer: state.isViewer)
                 }
-                return .none
+                return .run { _ in
+                    await withErrorReporting { try await timelineCache.saveUser(user) }
+                }
 
             case .userResponse(.failure(let error)):
                 if state.user == nil {

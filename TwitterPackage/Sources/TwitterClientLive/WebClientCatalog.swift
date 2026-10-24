@@ -68,7 +68,10 @@ enum CatalogBuilder {
     /// Chunks that hold the operations the app uses but that are not in main.js.
     static let chunkKeywords = ["bundle.HomeTimeline", "bundle.Bookmarks", "bundle.Notifications"]
 
-    static func build(fetch: @escaping @Sendable (URL) async throws -> String) async throws -> CatalogSnapshot {
+    /// Regex-scans megabytes of JavaScript, so it runs off the caller's actor.
+    @concurrent static func build(fetch: @escaping @Sendable (URL) async throws -> String) async throws
+        -> CatalogSnapshot
+    {
         let html = try await fetch(URL(string: "https://x.com/i/jf/")!)
         let chunks = chunkURLs(in: html)
 

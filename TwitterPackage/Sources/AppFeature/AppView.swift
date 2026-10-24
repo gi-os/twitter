@@ -1,4 +1,5 @@
 import ComposableArchitecture
+import ImagePipeline
 import MainFeature
 import Models
 import SignInFeature
@@ -10,11 +11,7 @@ public struct AppView: View {
     @State private var store = Store(initialState: AppFeature.State()) {
         AppFeature()
     } withDependencies: {
-        #if DEBUG
-            if ProcessInfo.processInfo.arguments.contains("--mock-twitter") {
-                $0[TwitterClient.self] = .previewValue
-            }
-        #endif
+        $0.useMockTwitterIfRequested()
     }
 
     public init() {}
@@ -41,7 +38,7 @@ private struct AppRootView: View {
                         .buttonStyle(.glassProminent)
                 }
             case .launching:
-                ProgressView()
+                LaunchingView()
             case .main:
                 if let store = store.scope(state: \.main, action: \.main) {
                     MainView(store: store)
@@ -56,13 +53,24 @@ private struct AppRootView: View {
     }
 }
 
-extension URLSession {
-    static let images: URLSession = {
-        let configuration = URLSessionConfiguration.default
-        configuration.urlCache = URLCache(memoryCapacity: 64 << 20, diskCapacity: 512 << 20)
-        configuration.requestCachePolicy = .returnCacheDataElseLoad
-        return URLSession(configuration: configuration)
-    }()
+/// Matches the blank launch screen, and only shows a spinner if restoring the session is actually slow, so a quick
+/// restore doesn't flash one.
+private struct LaunchingView: View {
+    @State private var showsSpinner = false
+
+    var body: some View {
+        ZStack {
+            Color.clear
+            if showsSpinner {
+                ProgressView()
+                    .transition(.opacity)
+            }
+        }
+        .task {
+            guard (try? await Task.sleep(for: .milliseconds(500))) != nil else { return }
+            withAnimation { showsSpinner = true }
+        }
+    }
 }
 
 #Preview {

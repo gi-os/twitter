@@ -51,6 +51,7 @@ package struct ComposeView: View {
                     Button("Cancel", systemImage: "xmark", role: .cancel) {
                         store.send(.cancelButtonTapped)
                     }
+                    .disabled(store.isPosting)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Post", systemImage: "paperplane", role: .confirm) {
@@ -61,6 +62,9 @@ package struct ComposeView: View {
                 ToolbarItem(placement: .bottomBar) {
                     CharacterCountGauge(remaining: store.remainingCharacters)
                 }
+                // A custom view stays horizontal by default and would vanish on the folded display's vertical bar;
+                // the circular gauge fits that bar as is.
+                .axisBehavior(.verticalPreferred)
             }
             .overlay {
                 if store.isPosting {
@@ -71,7 +75,7 @@ package struct ComposeView: View {
                 }
             }
         }
-        .interactiveDismissDisabled(!store.text.isEmpty)
+        .interactiveDismissDisabled(!store.text.isEmpty || store.isPosting)
         .onAppear { isEditorFocused = true }
     }
 }
@@ -91,6 +95,8 @@ private struct CharacterCountGauge: View {
         .gaugeStyle(.accessoryCircularCapacity)
         .tint(remaining < 0 ? .red : remaining < 20 ? .orange : .accentColor)
         .scaleEffect(0.6)
+        // A scale effect doesn't shrink layout; size the slot the toolbar reserves to what's drawn.
+        .frame(width: 32, height: 32)
         .accessibilityLabel("\(remaining) characters remaining")
     }
 }

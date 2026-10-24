@@ -15,11 +15,11 @@ package struct ProfileView: View {
 
     package var body: some View {
         Group {
-            if let feedsStore = store.scope(state: \.feeds, action: \.feeds), let user = store.user {
+            if let user = store.user, user.blocksViewer || (user.isBlocking && !store.isShowingBlockedPosts) {
+                BlockedProfile(user: user, store: store)
+            } else if let feedsStore = store.scope(state: \.feeds, action: \.feeds), let user = store.user {
                 FeedsView(store: feedsStore) {
-                    ProfileHeader(user: user, isViewer: store.isViewer) {
-                        store.send(.followButtonTapped)
-                    }
+                    ProfileHeader(user: user, isViewer: store.isViewer, store: store)
                 }
             } else if let errorMessage = store.errorMessage {
                 ContentUnavailableView {
@@ -40,8 +40,22 @@ package struct ProfileView: View {
             if store.isViewer {
                 ToolbarItem(placement: .topBarLeading) {
                     Menu("Account", systemImage: "person.crop.circle") {
+                        PostRowStylePicker()
+                        Divider()
                         Button("Sign Out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
                             store.send(.signOutButtonTapped)
+                        }
+                    }
+                }
+            } else if let user = store.user {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu("Account", systemImage: "ellipsis") {
+                        Button(
+                            user.isBlocking ? "Unblock @\(user.screenName)" : "Block @\(user.screenName)",
+                            systemImage: "nosign",
+                            role: user.isBlocking ? nil : .destructive
+                        ) {
+                            store.send(.blockButtonTapped)
                         }
                     }
                 }
@@ -51,55 +65,118 @@ package struct ProfileView: View {
     }
 }
 
+/// The header alone, over a notice in place of the posts: someone the viewer blocked, or who blocked the viewer.
+private struct BlockedProfile: View {
+    let user: User
+    let store: StoreOf<ProfileFeature>
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                ProfileHeader(user: user, isViewer: false, store: store)
+                Divider()
+                if user.blocksViewer {
+                    ContentUnavailableView {
+                        Label("You're blocked", systemImage: "nosign")
+                    } description: {
+                        Text("You can't follow or see @\(user.screenName)'s posts.")
+                    }
+                } else {
+                    ContentUnavailableView {
+                        Label("You blocked @\(user.screenName)", systemImage: "nosign")
+                    } description: {
+                        Text(
+                            "Are you sure you want to view these posts? Viewing posts won't unblock @\(user.screenName)."
+                        )
+                    } actions: {
+                        Button("View Posts") { store.send(.viewPostsButtonTapped) }
+                            .buttonStyle(.glass)
+                    }
+                }
+            }
+            .frame(maxWidth: 680)
+            .frame(maxWidth: .infinity)
+        }
+    }
+}
+
 private struct ProfileHeader: View {
     let user: User
     let isViewer: Bool
-    let followButtonTapped: () -> Void
-    @ScaledMetric private var avatarSize: CGFloat = 80
+    let store: StoreOf<ProfileFeature>
+    @Environment(\.tweetMetrics) private var metrics
+
+    /// `_t1_standardAvatarSize`: an 88 pt container whose 4 pt background-coloured ring leaves an 80 pt image.
+    private let avatarSize: CGFloat = 88
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ZStack(alignment: .bottomLeading) {
-                Banner(url: user.bannerURL)
-                Avatar(user: user, size: avatarSize)
-                    .overlay {
-                        Circle().strokeBorder(.background, lineWidth: 4)
-                    }
-                    .padding(.leading, 16)
-                    .offset(y: avatarSize / 2)
-            }
-            .padding(.bottom, avatarSize / 2)
+            Banner(url: user.bannerURL)
+                .overlay(alignment: .bottomLeading) {
+                    // The ring is a background around a smaller avatar, in the avatar's own shape, so no
+                    // stroke sits over the clipped image's antialiased edge.
+                    Avatar(user: user, size: avatarSize - 8)
+                        .padding(4)
+                        .background(
+                            .background,
+                            in: RoundedRectangle(
+                                cornerRadius: user.hasSquareAvatar ? avatarSize / 5 : avatarSize / 2,
+                                style: .continuous)
+                        )
+                        .alignmentGuide(.bottom) { $0[VerticalAlignment.center] }
+                        .padding(.leading, 16)
+                }
+                .padding(.bottom, avatarSize / 2)
 
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
-                        Text(user.name).font(.title2.bold())
-                        if user.isVerified {
-                            Image(systemName: "checkmark.seal.fill")
-                                .foregroundStyle(.tint)
-                                .accessibilityLabel("Verified")
+                        // `contentFont + 7`, or headline size when the name is just the handle.
+                        Text(user.name)
+                            .font(
+                                TwitterFont.font(
+                                    size: user.name == user.screenName ? 17 : metrics.bodySize + 7, weight: .bold)
+                            )
+                            .foregroundStyle(.twitterPrimary)
+                        if let badge = user.verificationBadge {
+                            VerificationBadgeView(badge: badge)
+                        }
+                        if let affiliate = user.affiliate {
+                            AffiliateBadge(label: affiliate, size: 20)
                         }
                     }
                     HStack(spacing: 6) {
-                        Text(verbatim: "@\(user.screenName)").foregroundStyle(.secondary)
-                        if user.followsYou {
+                        Text(verbatim: "@\(user.screenName)")
+                            .font(metrics.font(.body))
+                            .foregroundStyle(.twitterSecondary)
+                        if user.followsViewer {
                             Text("Follows you")
-                                .font(.caption)
-                                .padding(.horizontal, 6)
+                                .font(metrics.font(.subtext3))
+                                .foregroundStyle(.twitterSecondary)
+                                .padding(.horizontal, 4)
                                 .padding(.vertical, 2)
-                                .background(.quaternary, in: .capsule)
+                                .background(.quaternary, in: .rect(cornerRadius: 4))
                         }
                     }
                 }
-                Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
                 if !isViewer {
-                    FollowButton(isFollowing: user.isFollowing, action: followButtonTapped)
+                    if user.isBlocking {
+                        Button("Unblock") { store.send(.blockButtonTapped) }
+                            .buttonStyle(.glassProminent)
+                            .tint(.red)
+                    } else if !user.blocksViewer {
+                        FollowButton(isFollowing: user.isFollowing) { store.send(.followButtonTapped) }
+                    }
                 }
             }
             .padding(.horizontal, 16)
 
             if !user.bio.isEmpty {
                 Text(user.bio)
+                    .font(metrics.font(.body))
+                    .lineSpacing(metrics.lineSpacing(for: .body))
+                    .foregroundStyle(.twitterPrimary)
                     .padding(.horizontal, 16)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -108,35 +185,49 @@ private struct ProfileHeader: View {
                 .padding(.horizontal, 16)
 
             HStack(spacing: 16) {
-                Text("**\(user.followingCount.compact)** Following")
-                Text("**\(user.followersCount.compact)** Followers")
+                ProfileCount(count: user.followingCount, label: "Following")
+                ProfileCount(count: user.followersCount, label: "Followers")
             }
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
+            .font(metrics.font(.subtext1))
+            .foregroundStyle(.twitterSecondary)
             .padding(.horizontal, 16)
             .padding(.bottom, 8)
         }
     }
 }
 
+/// "**123** Following": the number bold in the primary colour.
+private struct ProfileCount: View {
+    let count: Int
+    let label: LocalizedStringKey
+    @Environment(\.tweetMetrics) private var metrics
+
+    var body: some View {
+        Text(
+            "\(Text(count.compact).font(metrics.font(.subtext1, weight: .bold)).foregroundStyle(.twitterPrimary)) \(Text(label))"
+        )
+    }
+}
+
+/// 3:1 in portrait, 4:1 when the height is compact.
 private struct Banner: View {
     let url: URL?
-    @ScaledMetric private var height: CGFloat = 140
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     var body: some View {
         Rectangle()
             .fill(.tint.opacity(0.25))
             .overlay {
                 if let url {
-                    AsyncImage(url: url) { image in
-                        image.resizable().scaledToFill()
-                    } placeholder: {
+                    RemoteImage(url: url, pointSize: 800) {
                         Color.clear
                     }
                 }
             }
-            .frame(height: height)
+            .aspectRatio(verticalSizeClass == .compact ? 4 : 3, contentMode: .fit)
+            .frame(maxWidth: .infinity)
             .clipped()
+            .allowsHitTesting(false)
             .accessibilityHidden(true)
     }
 }
@@ -155,14 +246,16 @@ private struct FollowButton: View {
 
 private struct ProfileDetails: View {
     let user: User
+    @Environment(\.tweetMetrics) private var metrics
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 12) { ProfileDetailItems(user: user) }
             VStack(alignment: .leading, spacing: 4) { ProfileDetailItems(user: user) }
         }
-        .font(.subheadline)
-        .foregroundStyle(.secondary)
+        .font(metrics.font(.subtext1))
+        .foregroundStyle(.twitterSecondary)
+        .tint(.twitterBlue)
     }
 
 }

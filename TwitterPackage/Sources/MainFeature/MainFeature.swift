@@ -16,7 +16,7 @@ package struct MainFeature {
         var notifications = TabStack.State.notifications
         var profile: TabStack.State
         var selectedTab = Tab.home
-        var viewer: User
+        package var viewer: User
 
         package init(viewer: User) {
             self.viewer = viewer
@@ -24,7 +24,7 @@ package struct MainFeature {
         }
     }
 
-    package enum Tab: Hashable {
+    package enum Tab: String, Hashable {
         case bookmarks
         case explore
         case home

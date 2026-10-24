@@ -1,9 +1,12 @@
 import ComposableArchitecture
 import Foundation
+import ImagePipeline
 import Models
+import PostText
 import Routing
 import TweetEngagement
 import TwitterClient
+import TwitterDatabase
 import TwitterUI
 
 @Reducer
@@ -11,27 +14,59 @@ package struct FeedFeature {
     @ObservableState
     package struct State: Equatable, Identifiable {
         var bottomCursor: String?
+        /// The cursor saved with the cached page: used to keep paging past cached posts once fresh ones land above.
+        var cachedBottomCursor: String?
         @Shared(.engagements) var engagements
         var errorMessage: String?
         var hasLoaded = false
         var isLoading = false
         var items: IdentifiedArrayOf<FeedItem> = []
-        let source: FeedSource
+        /// Whether the top of the timeline is on screen. Seeing the top is what counts as reading.
+        var isAtTop = true
+        /// "Show more replies" rows whose page is loading.
+        var loadingShowMoreIDs: Set<FeedItem.ID> = []
+        /// Posts that arrived above where the reader is, not yet scrolled up to.
+        var newPostCount = 0
+        /// The item at the top of the screen when scrolling last stopped, to return to when the feed's view is rebuilt
+        /// (folding or unfolding the device).
+        var lastTopItemID: FeedItem.ID?
+        /// Where to put the reader back once cached items are on screen; cleared once the view has scrolled there.
+        var restoringTopItemID: FeedItem.ID?
+        package let source: FeedSource
 
         package var id: FeedSource { source }
+
+        /// The post a thread is about; it anchors the thread's scroll position.
+        var focusedItemID: FeedItem.ID? {
+            guard case .thread(let tweetID) = source else { return nil }
+            return items.first { $0.tweets.first?.id == tweetID }?.id
+        }
 
         package init(source: FeedSource, items: IdentifiedArrayOf<FeedItem> = []) {
             self.source = source
             self.items = items
         }
+
+        /// Timelines the reader works through keep their place; a thread or a search is read fresh each time.
+        var keepsReadingPosition: Bool {
+            switch source {
+            case .search, .thread: false
+            case .bookmarks, .home, .notifications, .userLikes, .userMedia, .userPosts, .userReplies: true
+            }
+        }
     }
 
     package enum Action {
         case authorTapped(User)
+        case blockButtonTapped(User)
+        case blockFailed(userID: String, isBlocking: Bool)
         case bookmarkButtonTapped(Tweet)
+        case cachedPageLoaded(FeedPage, topItemID: FeedItem.ID?)
         case delegate(ContentDelegate)
+        case isAtTopChanged(Bool)
         case likeButtonTapped(Tweet)
         case linkTapped(URL)
+        case newPostsButtonTapped
         case pageResponse(Result<FeedPage, any Error>, isRefresh: Bool)
         case quoteButtonTapped(Tweet)
         case refreshPulled
@@ -39,17 +74,25 @@ package struct FeedFeature {
         case repostButtonTapped(Tweet)
         case retryButtonTapped
         case rowAppeared(FeedItem.ID)
+        case scrollStopped(topItemID: FeedItem.ID)
+        case showMoreButtonTapped(ShowMoreCursor)
+        case showMoreResponse(ShowMoreCursor, Result<FeedPage, any Error>)
         case task
+        case topItemRestored
         case tweetTapped(Tweet)
     }
 
     enum CancelID: Hashable {
         case page(FeedSource)
+        case saveTopItem(FeedSource)
     }
 
+    @Dependency(\.continuousClock) var clock
     @Dependency(TwitterClient.self) var client
     @Dependency(TweetEngagementSync.self) var engagementSync
+    @Dependency(ImageLoader.self) var imageLoader
     @Dependency(\.openURL) var openURL
+    @Dependency(TimelineCache.self) var timelineCache
 
     package init() {}
 
@@ -59,8 +102,38 @@ package struct FeedFeature {
             case .authorTapped(let user):
                 return .send(.delegate(.open(.profile(user))))
 
+            case .blockButtonTapped(let user):
+                let isBlocking = !user.isBlocking
+                state.setBlocking(isBlocking, userID: user.id)
+                return .run { _ in
+                    try await client.setBlocking(isBlocking, user.id)
+                } catch: { _, send in
+                    await send(.blockFailed(userID: user.id, isBlocking: !isBlocking))
+                }
+
+            case .blockFailed(let userID, let isBlocking):
+                state.setBlocking(isBlocking, userID: userID)
+                return .none
+
             case .bookmarkButtonTapped(let tweet):
                 return toggle(.bookmark, tweet: tweet, state: &state)
+
+            case .topItemRestored:
+                state.restoringTopItemID = nil
+                return .none
+
+            case .cachedPageLoaded(let page, let topItemID):
+                // Shown until the network answers. Paging waits for a live cursor; the cached one only continues
+                // past cached posts after fresh ones are merged in above them.
+                guard state.items.isEmpty else { return .none }
+                state.items = IdentifiedArray(page.items, uniquingIDsWith: { first, _ in first })
+                state.cachedBottomCursor = page.bottomCursor
+                if let topItemID, topItemID != state.items.first?.id, state.items[id: topItemID] != nil {
+                    state.restoringTopItemID = topItemID
+                    state.isAtTop = false
+                }
+                state.$engagements.withLock { $0.refresh(from: page.items.lazy.flatMap(\.tweets)) }
+                return .none
 
             case .delegate:
                 return .none
@@ -69,10 +142,41 @@ package struct FeedFeature {
                 return toggle(.like, tweet: tweet, state: &state)
 
             case .linkTapped(let url):
-                if let route = Route(url: url) {
+                // Posts and profiles open in the app, other pages in a web panel (or Safari's view on one stack),
+                // and anything else (mail, phone numbers, other apps) goes to the system.
+                switch Route.forLink(url) {
+                case .threadID(let id) where state.source == .thread(tweetID: id):
+                    return .none
+                case .some(let route):
                     return .send(.delegate(.open(route)))
+                case nil:
+                    return .run { _ in await openURL(url) }
                 }
-                return .run { _ in await openURL(url) }
+
+            case .newPostsButtonTapped:
+                state.newPostCount = 0
+                return .none
+
+            case .pageResponse(.success(let page), let isRefresh) where isRefresh && state.keepsReadingPosition:
+                state.isLoading = false
+                state.hasLoaded = true
+                state.errorMessage = nil
+                let merge = TimelineMerge(
+                    fresh: page,
+                    onScreen: state.items,
+                    existingCursor: state.bottomCursor ?? state.cachedBottomCursor
+                )
+                state.items = merge.items
+                state.bottomCursor = merge.bottomCursor
+                state.cachedBottomCursor = nil
+                state.newPostCount = state.isAtTop ? 0 : state.newPostCount + merge.newCount
+                state.$engagements.withLock { $0.refresh(from: page.items.lazy.flatMap(\.tweets)) }
+                let merged = FeedPage(cachedItems: Array(merge.items), bottomCursor: state.bottomCursor)
+                return .run { [source = state.source] _ in
+                    await withErrorReporting {
+                        try await timelineCache.save(source, merged, true)
+                    }
+                }
 
             case .pageResponse(.success(let page), let isRefresh):
                 state.isLoading = false
@@ -87,7 +191,11 @@ package struct FeedFeature {
                 }
                 state.bottomCursor = page.items.isEmpty ? nil : page.bottomCursor
                 state.$engagements.withLock { $0.refresh(from: page.items.lazy.flatMap(\.tweets)) }
-                return .none
+                return .run { [source = state.source] _ in
+                    await withErrorReporting {
+                        try await timelineCache.save(source, page, isRefresh)
+                    }
+                }
 
             case .pageResponse(.failure(let error), _):
                 state.isLoading = false
@@ -102,6 +210,7 @@ package struct FeedFeature {
                 return loadPage(state: &state, isRefresh: true)
 
             case .replyButtonTapped(let tweet):
+                guard tweet.viewerCanReply else { return .none }
                 return .send(.delegate(.compose(Draft(replyingTo: tweet))))
 
             case .repostButtonTapped(let tweet):
@@ -111,16 +220,70 @@ package struct FeedFeature {
                 return loadPage(state: &state, isRefresh: state.items.isEmpty)
 
             case .rowAppeared(let id):
+                guard let index = state.items.index(id: id) else { return .none }
+                let prefetch = prefetchImages(after: index, in: state.items)
                 guard
-                    let index = state.items.index(id: id),
                     index >= state.items.count - 5,
                     state.bottomCursor != nil,
                     !state.isLoading,
                     state.errorMessage == nil
-                else { return .none }
-                return loadPage(state: &state, isRefresh: false)
+                else { return prefetch }
+                return .merge(prefetch, loadPage(state: &state, isRefresh: false))
+
+            case .isAtTopChanged(let isAtTop):
+                state.isAtTop = isAtTop
+                if isAtTop { state.newPostCount = 0 }
+                return .none
+
+            case .scrollStopped(let topItemID):
+                state.lastTopItemID = topItemID
+                // Remembered once scrolling stops, not on every frame.
+                return .run { [source = state.source] _ in
+                    try await clock.sleep(for: .seconds(1))
+                    await withErrorReporting {
+                        try await timelineCache.saveTopItemID(source, topItemID)
+                    }
+                }
+                .cancellable(id: CancelID.saveTopItem(state.source), cancelInFlight: true)
+
+            case .showMoreResponse(let cursor, .success(let page)):
+                let id = FeedItem.showMore(cursor).id
+                state.loadingShowMoreIDs.remove(id)
+                guard let index = state.items.index(id: id) else { return .none }
+                state.items.remove(at: index)
+                var position = index
+                var reachedExisting = false
+                for item in page.items {
+                    guard state.items[id: item.id] == nil else {
+                        reachedExisting = true
+                        continue
+                    }
+                    state.items.insert(item, at: position)
+                    position += 1
+                }
+                // A timeline gap that's still open after this page gets a new gap row where it now starts.
+                if cursor.id.hasPrefix(TimelineMerge.gapPrefix), !reachedExisting, let next = page.bottomCursor {
+                    state.items.insert(.showMore(TimelineMerge.gap(cursor: next)), at: position)
+                }
+                state.$engagements.withLock { $0.refresh(from: page.items.lazy.flatMap(\.tweets)) }
+                return .none
+
+            case .showMoreResponse(let cursor, .failure):
+                state.loadingShowMoreIDs.remove(FeedItem.showMore(cursor).id)
+                return .none
+
+            case .showMoreButtonTapped(let cursor):
+                let id = FeedItem.showMore(cursor).id
+                guard state.items[id: id] != nil, state.loadingShowMoreIDs.insert(id).inserted else { return .none }
+                return .run { [source = state.source] send in
+                    await send(.showMoreResponse(cursor, Result { try await client.feed(source, cursor.cursor) }))
+                }
 
             case .task:
+                // A rebuilt view (after folding or unfolding) starts at the top; put the reader back.
+                if state.hasLoaded, let lastTopItemID = state.lastTopItemID, state.items[id: lastTopItemID] != nil {
+                    state.restoringTopItemID = lastTopItemID
+                }
                 guard !state.hasLoaded, !state.isLoading else { return .none }
                 return loadPage(state: &state, isRefresh: true)
 
@@ -136,13 +299,43 @@ package struct FeedFeature {
         state.errorMessage = nil
         let source = state.source
         let cursor = isRefresh ? nil : state.bottomCursor
+        // A first load shows whatever was cached last time while the network catches up.
+        let readsCache = isRefresh && state.items.isEmpty
         return .run { send in
-            await send(
-                .pageResponse(Result { try await client.feed(source, cursor) }, isRefresh: isRefresh)
-            )
+            // The request starts first so reading the cache doesn't delay it.
+            async let page = Result { try await client.feed(source, cursor) }
+            if readsCache, let cached = try? await timelineCache.load(source), !cached.items.isEmpty {
+                await Self.typesetText(of: cached.items)
+                await send(.cachedPageLoaded(cached, topItemID: try? await timelineCache.topItemID(source)))
+            }
+            let response = await page
+            if case .success(let fresh) = response {
+                await Self.typesetText(of: fresh.items)
+            }
+            await send(.pageResponse(response, isRefresh: isRefresh))
         }
         .cancellable(id: CancelID.page(source), cancelInFlight: true)
     }
+
+    /// Typesets a page's post text off the main actor before the page reaches state, so its rows draw their text
+    /// fully on their first frame instead of swapping it in.
+    private static func typesetText(of items: [FeedItem]) async {
+        await PostTextTypesetter.prewarm(items.flatMap(\.tweets).map(TweetText.timelineInput(for:)))
+    }
+
+    /// Warms the image cache for the rows just below one that appeared, so they draw fully on their first frame.
+    private func prefetchImages(after index: Int, in items: IdentifiedArrayOf<FeedItem>) -> EffectOf<Self> {
+        let upcoming = items.elements.dropFirst(index + 1).prefix(Self.prefetchDistance)
+        let requests = upcoming.flatMap { item in
+            item.tweets.flatMap { FeedImages.requests(for: $0, scale: Self.prefetchScale) }
+        }
+        guard !requests.isEmpty else { return .none }
+        return .run { _ in imageLoader.prefetch(requests) }
+    }
+
+    static let prefetchDistance = 6
+    /// Every iPhone that runs this app draws at 3x.
+    static let prefetchScale: CGFloat = 3
 
     private func toggle(_ interaction: Interaction, tweet: Tweet, state: inout State) -> EffectOf<Self> {
         state.$engagements.withLock { $0.toggle(interaction, for: tweet) }
@@ -157,6 +350,27 @@ extension FeedItem {
             notification.tweet.map { [$0] } ?? []
         case .tweet(let feedTweet):
             [feedTweet.tweet] + feedTweet.tweet.quoted
+        case .tombstone, .showMore:
+            []
+        }
+    }
+
+    /// Applies `update` to every copy of a user in this item (author, quoted author, reposter).
+    mutating func updateUser(id: String, _ update: (inout User) -> Void) {
+        guard case .tweet(var feedTweet) = self else { return }
+        if feedTweet.tweet.author.id == id { update(&feedTweet.tweet.author) }
+        for index in feedTweet.tweet.quoted.indices where feedTweet.tweet.quoted[index].author.id == id {
+            update(&feedTweet.tweet.quoted[index].author)
+        }
+        if feedTweet.repostedBy?.id == id { update(&feedTweet.repostedBy!) }
+        self = .tweet(feedTweet)
+    }
+}
+
+extension FeedFeature.State {
+    mutating func setBlocking(_ isBlocking: Bool, userID: String) {
+        for id in items.ids {
+            items[id: id]?.updateUser(id: userID) { $0.isBlocking = isBlocking }
         }
     }
 }

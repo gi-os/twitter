@@ -1,4 +1,5 @@
 import Models
+import PostText
 import Routing
 import SwiftUI
 
@@ -6,18 +7,19 @@ package struct Avatar: View {
     let url: URL?
     let isSquare: Bool
     let size: CGFloat
+    let decodeSize: CGFloat
 
-    package init(user: User, size: CGFloat) {
+    /// `decodeSize` is the size the image is decoded at, when it should match a prefetch rather than the drawn size.
+    package init(user: User, size: CGFloat, decodeSize: CGFloat? = nil) {
         url = user.avatarURL(forSize: size)
         isSquare = user.hasSquareAvatar
         self.size = size
+        self.decodeSize = decodeSize ?? size
     }
 
     package var body: some View {
         let shape = RoundedRectangle(cornerRadius: isSquare ? size / 5 : size / 2, style: .continuous)
-        AsyncImage(url: url) { image in
-            image.resizable().scaledToFill()
-        } placeholder: {
+        RemoteImage(url: url, pointSize: decodeSize) {
             shape.fill(.quaternary)
         }
         .frame(width: size, height: size)
@@ -26,155 +28,201 @@ package struct Avatar: View {
     }
 }
 
+/// Name, badges, handle and time: one line in a timeline row, or the name over the handle beside a stacked row's
+/// avatar.
 package struct AuthorLine: View {
+    package enum Layout: Sendable {
+        /// "Name ✓ @handle · 2h" on one line.
+        case inline
+        /// "Name ✓" over "@handle · 2h".
+        case stacked
+    }
+
+    let affiliate: AffiliateLabel?
+    let badge: VerificationBadge?
     let date: Date?
-    let isVerified: Bool
+    let layout: Layout
     let name: String
     let screenName: String
+    @Environment(\.tweetMetrics) private var metrics
 
-    package init(user: User, date: Date?) {
+    package init(user: User, date: Date?, layout: Layout = .inline) {
+        affiliate = user.affiliate
+        badge = user.verificationBadge
         self.date = date
-        isVerified = user.isVerified
+        self.layout = layout
         name = user.name
         screenName = user.screenName
     }
 
     package var body: some View {
-        HStack(spacing: 4) {
-            Text(name)
-                .fontWeight(.bold)
-                .lineLimit(1)
-                .layoutPriority(1)
-            if isVerified {
-                Image(systemName: "checkmark.seal.fill")
-                    .foregroundStyle(.tint)
-                    .imageScale(.small)
-                    .accessibilityLabel("Verified")
+        Group {
+            switch layout {
+            case .inline:
+                HStack(spacing: metrics.authorLineSpacing) {
+                    nameAndBadges
+                        .layoutPriority(1)
+                    handleAndTime
+                }
+            case .stacked:
+                VStack(alignment: .leading, spacing: metrics.stackedAuthorSpacing) {
+                    nameAndBadges
+                    handleAndTime
+                }
             }
+        }
+        .font(metrics.font(.body))
+        .foregroundStyle(.twitterSecondary)
+    }
+
+    /// `authorBadgePadding`: 2.5 pt either side of the badge.
+    private var nameAndBadges: some View {
+        HStack(spacing: 2.5) {
+            Text(name)
+                .font(metrics.font(.body, weight: .bold))
+                .foregroundStyle(.twitterPrimary)
+                .lineLimit(1)
+            if let badge {
+                VerificationBadgeView(badge: badge)
+                    .imageScale(.small)
+            }
+            if let affiliate {
+                AffiliateBadge(label: affiliate, size: 14)
+            }
+        }
+    }
+
+    private var handleAndTime: some View {
+        HStack(spacing: metrics.authorLineSpacing) {
             Text(verbatim: "@\(screenName)")
-                .foregroundStyle(.secondary)
                 .lineLimit(1)
             if let date {
-                Text(verbatim: "·").foregroundStyle(.secondary)
+                Text(verbatim: "·")
                 Text(date.shortRelative)
-                    .foregroundStyle(.secondary)
                     .fixedSize()
             }
         }
-        .font(.subheadline)
     }
 }
 
+/// Post text: links, mentions, hashtags, cashtags and Twitter's bold/italic, typeset by ``PostTextTypesetter``.
+///
+/// The first frame draws from the typesetter's cache, or typesets inline when the text is short; long text draws as
+/// plain text in the same font (so the row doesn't change height) while it typesets off the main actor, then swaps in
+/// without animation. Long-pressing a mention previews that profile (see ``MentionPreviews``).
 package struct TweetText: View {
-    let links: [String: URL]
-    let text: String
-    var font: Font = .body
+    let input: PostTextInput
+    /// Overrides the metrics' type ramp; `nil` draws `style` in Chirp at Twitter's line height.
+    var font: Font?
+    var style: TwitterTextStyle = .body
+    @State private var prepared: TypesetPostText?
+    @Environment(\.tweetMetrics) private var metrics
 
-    package init(links: [String: URL], text: String, font: Font = .body) {
-        self.links = links
-        self.text = text
+    /// Free text with its links; `.markdown` also reads inline Markdown (community notes, bios).
+    package init(links: [String: URL], text: String, font: Font? = nil, flavor: PostTextInput.Flavor = .post) {
+        input = PostTextInput(text: text, links: links, flavor: flavor)
         self.font = font
     }
 
+    /// The input a timeline row typesets for a post (cut to the timeline limit when it's long), so a feed can prepare
+    /// it off the main actor before the row appears.
+    nonisolated package static func timelineInput(for tweet: Tweet) -> PostTextInput {
+        let isTruncated = PostTextInput.needsTruncation(tweet.text, limit: timelineCharacterLimit)
+        return PostTextInput(
+            text: tweet.text,
+            links: tweet.links,
+            tags: tweet.hashtags + tweet.cashtags,
+            styles: tweet.styles,
+            characterLimit: isTruncated ? timelineCharacterLimit : nil
+        )
+    }
+
+    /// A post's text with its bold/italic styling and recognized hashtags and cashtags, cut to `characterLimit` when
+    /// given (see ``truncated(_:limit:)``).
+    package init(
+        tweet: Tweet, style: TwitterTextStyle = .body, font: Font? = nil, characterLimit: Int? = nil
+    ) {
+        input = PostTextInput(
+            text: tweet.text,
+            links: tweet.links,
+            tags: tweet.hashtags + tweet.cashtags,
+            styles: tweet.styles,
+            characterLimit: characterLimit
+        )
+        self.font = font
+        self.style = style
+    }
+
     package var body: some View {
-        Text(TweetText.attributed(text, links: links))
-            .font(font)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    @MainActor private static var cache: [Int: AttributedString] = [:]
-
-    @MainActor static func attributed(_ text: String, links: [String: URL]) -> AttributedString {
-        var hasher = Hasher()
-        hasher.combine(text)
-        for key in links.keys.sorted() { hasher.combine(key) }
-        let key = hasher.finalize()
-        if let hit = cache[key] { return hit }
-        let value = build(text, links: links)
-        if cache.count > 4_000 { cache.removeAll(keepingCapacity: true) }
-        cache[key] = value
-        return value
-    }
-
-    private static func build(_ text: String, links: [String: URL]) -> AttributedString {
-        let urlPatterns = links.keys.sorted { $0.count > $1.count }.map(NSRegularExpression.escapedPattern(for:))
-        let patterns = urlPatterns + [#"(?<![\w@])@\w{1,15}"#, #"(?<![\w&])#\w+"#, #"(?<![\w])\$[A-Za-z]{1,6}\b"#]
-        guard let regex = try? NSRegularExpression(pattern: patterns.map { "(?:\($0))" }.joined(separator: "|"))
-        else { return AttributedString(text) }
-
-        var result = AttributedString()
-        var cursor = text.startIndex
-        for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
-            guard let range = Range(match.range, in: text) else { continue }
-            if cursor < range.lowerBound { result += AttributedString(text[cursor..<range.lowerBound]) }
-            let token = String(text[range])
-            var piece = AttributedString(token)
-            piece.link = destination(for: token, links: links)
-            result += piece
-            cursor = range.upperBound
+        let typeset = prepared?.input == input ? prepared : PostTextTypesetter.cachedOrInline(input)
+        Group {
+            if let typeset {
+                Text(mentionsTaggedIn: typeset)
+                    .modifier(MentionPreviews(typeset: typeset))
+            } else {
+                Text(verbatim: input.placeholderText)
+                    .task(id: input) {
+                        let result = await PostTextTypesetter.prepare(input)
+                        // A recycled row may have moved on to another post while this one typeset.
+                        guard !Task.isCancelled, result.input == input else { return }
+                        var transaction = Transaction()
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) { prepared = result }
+                    }
+            }
         }
-        if cursor < text.endIndex { result += AttributedString(text[cursor...]) }
-        return result
+        .font(font ?? metrics.font(style))
+        .lineSpacing(font == nil ? metrics.lineSpacing(for: style) : 0)
+        .foregroundStyle(.twitterPrimary)
+        .tint(.twitterBlue)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private static func destination(for token: String, links: [String: URL]) -> URL? {
-        if let url = links[token] { return url }
-        var components = URLComponents()
-        components.scheme = Route.scheme
-        if token.hasPrefix("@") {
-            components.host = "user"
-            components.path = "/\(token.dropFirst())"
-        } else {
-            components.host = "search"
-            components.queryItems = [URLQueryItem(name: "q", value: token)]
-        }
-        return components.url
+    /// Timeline rows show this many characters of a long post before "Show more".
+    nonisolated package static let timelineCharacterLimit = 280
+
+    /// `text` cut at a word boundary near `limit` with an ellipsis, or `nil` when it already fits.
+    package static func truncated(_ text: String, limit: Int) -> String? {
+        PostTextInput.truncated(text, limit: limit)
     }
 }
 
 package struct EngagementButton: View {
     let action: () -> Void
-    var activeColor: Color = .accentColor
-    var activeSymbol: String?
+    var activeColor: Color = .twitterBlue
+    var activeIcon: TwitterIcon?
     var count: Int?
+    let icon: TwitterIcon
     var isActive = false
     let label: LocalizedStringKey
-    let symbol: String
 
     package init(
         action: @escaping () -> Void,
-        activeColor: Color = .accentColor,
-        activeSymbol: String? = nil,
+        activeColor: Color = .twitterBlue,
+        activeIcon: TwitterIcon? = nil,
         count: Int? = nil,
+        icon: TwitterIcon,
         isActive: Bool = false,
-        label: LocalizedStringKey,
-        symbol: String
+        label: LocalizedStringKey
     ) {
         self.action = action
         self.activeColor = activeColor
-        self.activeSymbol = activeSymbol
+        self.activeIcon = activeIcon
         self.count = count
+        self.icon = icon
         self.isActive = isActive
         self.label = label
-        self.symbol = symbol
     }
 
     package var body: some View {
         Button(action: action) {
-            HStack(spacing: 4) {
-                Image(systemName: isActive ? activeSymbol ?? symbol : symbol)
-                    .contentTransition(.symbolEffect(.replace))
-                    .frame(minWidth: 24, minHeight: 32)
-                if let count, count > 0 {
-                    Text(count.compact)
-                        .monospacedDigit()
-                        .contentTransition(.numericText(value: Double(count)))
-                }
-            }
-            .foregroundStyle(isActive ? activeColor : .secondary)
-            .font(.footnote)
-            .contentShape(.rect)
+            EngagementLabel(
+                icon: isActive ? activeIcon ?? icon : icon,
+                count: count,
+                minWidth: count == nil ? EngagementLabel.iconOnlyWidth : EngagementLabel.minimumWidth
+            )
+            .foregroundStyle(isActive ? activeColor : .twitterSecondary)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -182,9 +230,77 @@ package struct EngagementButton: View {
     }
 }
 
+/// An action bar glyph and its count: an 18 pt icon in a 24 pt tall slot, with a 44 × 41 pt hit area around it
+/// (`inlineActionMinimumTappingSize`) that doesn't push the neighbouring rows apart.
+package struct EngagementLabel: View {
+    let icon: TwitterIcon
+    let count: Int?
+    var minWidth: CGFloat = EngagementLabel.minimumWidth
+    @Environment(\.tweetMetrics) private var metrics
+
+    /// Buttons with counts are at least as wide as their hit area.
+    package static let minimumWidth: CGFloat = 44
+    /// Icon-only buttons draw narrower and grow their hit area to 44 sideways.
+    package static let iconOnlyWidth: CGFloat = 34
+    static let height: CGFloat = 24
+    static let hitHeight: CGFloat = 41
+
+    package init(icon: TwitterIcon, count: Int?, minWidth: CGFloat = EngagementLabel.minimumWidth) {
+        self.icon = icon
+        self.count = count
+        self.minWidth = minWidth
+    }
+
+    package var body: some View {
+        let horizontalSlack = max(EngagementLabel.minimumWidth - minWidth, 0) / 2
+        let verticalSlack = (EngagementLabel.hitHeight - EngagementLabel.height) / 2
+        HStack(spacing: 4) {
+            TwitterIconView(icon)
+            if let count, count > 0 {
+                Text(count.compact)
+                    // A count never wraps mid-number; the bar's flexible gaps give way instead.
+                    .lineLimit(1)
+                    .fixedSize()
+                    .font(metrics.font(.subtext2))
+                    .monospacedDigit()
+                    .contentTransition(.numericText(value: Double(count)))
+            }
+        }
+        .frame(
+            minWidth: minWidth, minHeight: EngagementLabel.height,
+            alignment: count == nil ? .center : .leading
+        )
+        // Never narrower than its icon and count, so a bar too tight for every label reports that it doesn't fit
+        // instead of overlapping them.
+        .fixedSize(horizontal: true, vertical: false)
+        .padding(.horizontal, horizontalSlack)
+        .padding(.vertical, verticalSlack)
+        .contentShape(.rect)
+        .padding(.horizontal, -horizontalSlack)
+        .padding(.vertical, -verticalSlack)
+    }
+}
+
 extension Int {
-    package var compact: String {
-        formatted(.number.notation(.compactName).precision(.fractionLength(0...1)))
+    /// Twitter's count style: the full number below 10,000 ("1,234"), then K / M / B with one decimal, truncated and
+    /// without a trailing ".0" ("12.3K", "123K", "1.2M").
+    package var compact: String { compact(locale: .current) }
+
+    /// ``compact`` in a given locale, which decides the grouping and decimal separators.
+    package func compact(locale: Locale) -> String {
+        guard magnitude >= 10_000 else { return formatted(.number.locale(locale)) }
+        let units: [(Int, String)] = [
+            (1_000_000_000_000, "T"), (1_000_000_000, "B"), (1_000_000, "M"), (1_000, "K")
+        ]
+        let value = self.magnitude
+        guard let (divisor, suffix) = units.first(where: { value >= UInt($0.0) }) else {
+            return formatted(.number.locale(locale))
+        }
+        // Integer division truncates, so 1,299,999 reads "1.2M", never "1.3M".
+        let tenths = value / (UInt(divisor) / 10)
+        let number = Double(tenths / 10) + Double(tenths % 10) / 10
+        return (self < 0 ? "-" : "") + number.formatted(.number.precision(.fractionLength(0...1)).locale(locale))
+            + suffix
     }
 }
 

@@ -2,6 +2,7 @@ import Dependencies
 import DependenciesMacros
 import Foundation
 import Models
+import Sharing
 
 package struct MediaUpload: Hashable, Sendable {
     package var data: Data
@@ -22,6 +23,7 @@ package struct TwitterClient: Sendable {
             _ text: String, _ replyTo: String?, _ quoteURL: URL?, _ media: [MediaUpload]
         ) async throws -> String
     package var restoreSession: @Sendable () async throws -> User?
+    package var setBlocking: @Sendable (_ isBlocking: Bool, _ userID: String) async throws -> Void
     package var setBookmarked: @Sendable (_ isBookmarked: Bool, _ tweetID: String) async throws -> Void
     package var setFollowing: @Sendable (_ isFollowing: Bool, _ userID: String) async throws -> Void
     package var setLiked: @Sendable (_ isLiked: Bool, _ tweetID: String) async throws -> Void
@@ -37,16 +39,30 @@ extension TwitterClient: TestDependencyKey {
     package static var previewValue: TwitterClient {
         TwitterClient(
             deleteTweet: { _ in },
-            feed: { source, _ in .mock(source) },
+            feed: { source, cursor in .mock(source, cursor: cursor) },
             post: { _, _, _, _ in "preview" },
             restoreSession: { .mock },
+            setBlocking: { _, _ in },
             setBookmarked: { _, _ in },
             setFollowing: { _, _ in },
             setLiked: { _, _ in },
             setReposted: { _, _ in },
             signIn: { _ in .mock },
             signOut: {},
-            user: { _ in .mock }
+            user: { screenName in
+                User.mocks.first { $0.screenName.lowercased() == screenName.lowercased() } ?? .mock
+            }
         )
+    }
+}
+
+extension SharedKey where Self == FileStorageKey<User?>.Default {
+    /// The signed-in account, shared by every window. The main window owns sign-in and sign-out and writes it; other
+    /// windows watch it so they can step aside when the account goes away.
+    ///
+    /// It's kept on disk so the next launch can show the app, and its cached timelines, right away while
+    /// `restoreSession` checks with Twitter that the account is still signed in.
+    package static var viewer: Self {
+        Self[.fileStorage(.applicationSupportDirectory.appending(component: "viewer.json")), default: nil]
     }
 }

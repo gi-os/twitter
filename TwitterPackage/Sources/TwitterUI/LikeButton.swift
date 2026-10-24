@@ -5,6 +5,7 @@ package struct LikeButton: View {
     let action: () -> Void
     let count: Int
     let isLiked: Bool
+    @Environment(\.tweetMetrics) private var metrics
 
     package init(isLiked: Bool, count: Int, action: @escaping () -> Void) {
         self.action = action
@@ -19,25 +20,34 @@ package struct LikeButton: View {
             }
         } label: {
             HStack(spacing: 4) {
-                if isLiked {
-                    Image(systemName: "heart.fill")
-                        .foregroundStyle(.pink.gradient)
-                        .transition(.movingParts.pop(.pink))
-                } else {
-                    Image(systemName: "heart")
-                        .foregroundStyle(.secondary)
-                        .transition(.identity)
+                ZStack {
+                    if isLiked {
+                        TwitterIconView(.heart)
+                            .foregroundStyle(.twitterLike)
+                            .transition(.movingParts.pop(Color.twitterLike))
+                    } else {
+                        TwitterIconView(.heartStroke)
+                            .foregroundStyle(.twitterSecondary)
+                            .transition(.identity)
+                    }
                 }
 
                 if count > 0 {
                     Text(count.compact)
+                        // A count never wraps mid-number; the bar's flexible gaps give way instead.
+                        .lineLimit(1)
+                        .fixedSize()
+                        .font(metrics.font(.subtext2))
+                        .monospacedDigit()
+                        .foregroundStyle(isLiked ? .twitterLike : .twitterSecondary)
                         .animation(isLiked ? .default.delay(0.4) : nil, value: isLiked)
                 }
             }
-            .foregroundStyle(.secondary)
-            .frame(minHeight: 32)
-            .font(.footnote)
+            .frame(minWidth: EngagementLabel.minimumWidth, minHeight: 24, alignment: .leading)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.vertical, 8.5)
             .contentShape(.rect)
+            .padding(.vertical, -8.5)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(isLiked ? "Unlike" : "Like")

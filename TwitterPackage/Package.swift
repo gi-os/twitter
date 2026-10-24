@@ -5,12 +5,13 @@ import PackageDescription
 let package = Package(
     name: "TwitterPackage",
     platforms: [
-        .iOS(.v27)
+        .iOS("27.2")
     ],
     products: [
         .library(name: "AppFeature", targets: ["AppFeature"]),
         .library(name: "ComposeFeature", targets: ["ComposeFeature"]),
         .library(name: "FeedFeature", targets: ["FeedFeature"]),
+        .library(name: "ImagePipeline", targets: ["ImagePipeline"]),
         .library(name: "MainFeature", targets: ["MainFeature"]),
         .library(name: "Models", targets: ["Models"]),
         .library(name: "ProfileFeature", targets: ["ProfileFeature"]),
@@ -21,6 +22,7 @@ let package = Package(
         .library(name: "TweetEngagement", targets: ["TweetEngagement"]),
         .library(name: "TwitterClient", targets: ["TwitterClient"]),
         .library(name: "TwitterClientLive", targets: ["TwitterClientLive"]),
+        .library(name: "TwitterDatabase", targets: ["TwitterDatabase"]),
         .library(name: "TwitterUI", targets: ["TwitterUI"])
     ],
     dependencies: [
@@ -28,15 +30,22 @@ let package = Package(
         .package(url: "https://github.com/pointfreeco/swift-dependencies", from: "1.17.1"),
         .package(url: "https://github.com/pointfreeco/swift-identified-collections", from: "1.1.1"),
         .package(url: "https://github.com/EmergeTools/Pow", from: "0.3.1"),
-        .package(url: "https://github.com/pointfreeco/swift-sharing", from: "2.10.1")
+        .package(url: "https://github.com/pointfreeco/swift-sharing", from: "2.10.1"),
+        .package(url: "https://github.com/pointfreeco/sqlite-data", from: "1.9.0"),
+        .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.19.7")
     ],
     targets: [
         .target(
             name: "AppFeature",
             dependencies: [
+                "ImagePipeline",
                 "MainFeature",
+                "Routing",
                 "SignInFeature",
+                "TweetEngagement",
                 "TwitterClientLive",
+                "TwitterDatabase",
+                "TwitterUI",
                 .product(name: "ComposableArchitecture", package: "swift-composable-architecture")
             ]
         ),
@@ -52,11 +61,21 @@ let package = Package(
         .target(
             name: "FeedFeature",
             dependencies: [
+                "ImagePipeline",
+                "PostText",
                 "Routing",
                 "TweetEngagement",
-                "TwitterUI",
                 "TwitterClient",
+                "TwitterDatabase",
+                "TwitterUI",
                 .product(name: "ComposableArchitecture", package: "swift-composable-architecture")
+            ]
+        ),
+        .target(
+            name: "ImagePipeline",
+            dependencies: [
+                .product(name: "Dependencies", package: "swift-dependencies"),
+                .product(name: "DependenciesMacros", package: "swift-dependencies")
             ]
         ),
         .target(
@@ -64,6 +83,7 @@ let package = Package(
             dependencies: [
                 "ComposeFeature",
                 "TabStackFeature",
+                "TwitterUI",
                 .product(name: "ComposableArchitecture", package: "swift-composable-architecture")
             ]
         ),
@@ -77,6 +97,7 @@ let package = Package(
             name: "ProfileFeature",
             dependencies: [
                 "FeedFeature",
+                "TwitterDatabase",
                 .product(name: "ComposableArchitecture", package: "swift-composable-architecture")
             ]
         ),
@@ -106,6 +127,15 @@ let package = Package(
                 "FeedFeature",
                 "ProfileFeature",
                 "SearchFeature",
+                "TwitterUI",
+                "WebFeature",
+                .product(name: "ComposableArchitecture", package: "swift-composable-architecture")
+            ]
+        ),
+        .target(
+            name: "WebFeature",
+            dependencies: [
+                "Routing",
                 .product(name: "ComposableArchitecture", package: "swift-composable-architecture")
             ]
         ),
@@ -120,11 +150,32 @@ let package = Package(
             ]
         ),
         .target(
-            name: "TwitterUI",
+            name: "PostText",
             dependencies: [
                 "Models",
+                "Routing"
+            ]
+        ),
+        .testTarget(
+            name: "PostTextTests",
+            dependencies: [
+                "PostText"
+            ]
+        ),
+        .target(
+            name: "TwitterUI",
+            dependencies: [
+                "ImagePipeline",
+                "Models",
+                "PostText",
                 "Routing",
+                "TwitterClient",
+                "TwitterDatabase",
+                .product(name: "Dependencies", package: "swift-dependencies"),
                 .product(name: "Pow", package: "Pow")
+            ],
+            resources: [
+                .process("Resources")
             ]
         ),
         .target(
@@ -132,7 +183,17 @@ let package = Package(
             dependencies: [
                 "Models",
                 .product(name: "Dependencies", package: "swift-dependencies"),
-                .product(name: "DependenciesMacros", package: "swift-dependencies")
+                .product(name: "DependenciesMacros", package: "swift-dependencies"),
+                .product(name: "Sharing", package: "swift-sharing")
+            ]
+        ),
+        .target(
+            name: "TwitterDatabase",
+            dependencies: [
+                "Models",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+                .product(name: "DependenciesMacros", package: "swift-dependencies"),
+                .product(name: "SQLiteData", package: "sqlite-data")
             ]
         ),
         .target(
@@ -144,10 +205,30 @@ let package = Package(
             ]
         ),
         .testTarget(
+            name: "AppFeatureTests",
+            dependencies: [
+                "AppFeature",
+                .product(name: "DependenciesTestSupport", package: "swift-dependencies")
+            ]
+        ),
+        .testTarget(
             name: "FeedFeatureTests",
             dependencies: [
                 "FeedFeature",
                 .product(name: "DependenciesTestSupport", package: "swift-dependencies")
+            ]
+        ),
+        .testTarget(
+            name: "MainFeatureTests",
+            dependencies: [
+                "MainFeature",
+                .product(name: "DependenciesTestSupport", package: "swift-dependencies")
+            ]
+        ),
+        .testTarget(
+            name: "ModelsTests",
+            dependencies: [
+                "Models"
             ]
         ),
         .testTarget(
@@ -163,11 +244,31 @@ let package = Package(
             ]
         ),
         .testTarget(
+            name: "TwitterDatabaseTests",
+            dependencies: [
+                "TwitterDatabase",
+                .product(name: "DependenciesTestSupport", package: "swift-dependencies")
+            ]
+        ),
+        .testTarget(
             name: "TweetEngagementTests",
             dependencies: [
                 "TweetEngagement",
                 .product(name: "DependenciesTestSupport", package: "swift-dependencies")
             ]
+        ),
+        .testTarget(
+            name: "SnapshotTests",
+            dependencies: [
+                "MainFeature",
+                "ProfileFeature",
+                "TabStackFeature",
+                "TwitterDatabase",
+                "TwitterUI",
+                .product(name: "DependenciesTestSupport", package: "swift-dependencies"),
+                .product(name: "SnapshotTesting", package: "swift-snapshot-testing")
+            ],
+            exclude: ["__Snapshots__"]
         ),
         .testTarget(
             name: "TabStackFeatureTests",

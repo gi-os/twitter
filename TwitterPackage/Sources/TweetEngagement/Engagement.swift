@@ -14,9 +14,13 @@ package struct Engagement: Equatable, Sendable {
         package var serverCount: Int
 
         package init(isOn: Bool, count: Int) {
-            desired = isOn
-            server = isOn
-            serverCount = count
+            self.init(desired: isOn, server: isOn, serverCount: count)
+        }
+
+        package init(desired: Bool, server: Bool, serverCount: Int) {
+            self.desired = desired
+            self.server = server
+            self.serverCount = serverCount
         }
 
         package var isOn: Bool { desired }
@@ -48,10 +52,18 @@ package struct Engagement: Equatable, Sendable {
     package var like: Toggle
     package var repost: Toggle
 
+    package init(bookmark: Toggle, like: Toggle, repost: Toggle) {
+        self.bookmark = bookmark
+        self.like = like
+        self.repost = repost
+    }
+
     package init(tweet: Tweet) {
-        bookmark = Toggle(isOn: tweet.isBookmarked, count: tweet.bookmarkCount)
-        like = Toggle(isOn: tweet.isLiked, count: tweet.likeCount)
-        repost = Toggle(isOn: tweet.isRetweeted, count: tweet.retweetCount)
+        self.init(
+            bookmark: Toggle(isOn: tweet.isBookmarked, count: tweet.bookmarkCount),
+            like: Toggle(isOn: tweet.isLiked, count: tweet.likeCount),
+            repost: Toggle(isOn: tweet.isReposted, count: tweet.repostCount)
+        )
     }
 
     package subscript(interaction: Interaction) -> Toggle {
@@ -74,7 +86,7 @@ package struct Engagement: Equatable, Sendable {
     package mutating func refresh(from tweet: Tweet) {
         bookmark.refresh(isOn: tweet.isBookmarked, count: tweet.bookmarkCount)
         like.refresh(isOn: tweet.isLiked, count: tweet.likeCount)
-        repost.refresh(isOn: tweet.isRetweeted, count: tweet.retweetCount)
+        repost.refresh(isOn: tweet.isReposted, count: tweet.repostCount)
     }
 }
 

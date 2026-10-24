@@ -14,7 +14,7 @@ package struct SignInView: View {
     package var body: some View {
         NavigationStack {
             SignInWebView(
-                loadingChanged: { store.send(.pageLoadingChanged($0)) },
+                pageLoadingChanged: { store.send(.pageLoadingChanged($0)) },
                 sessionCaptured: { store.send(.sessionCaptured($0)) }
             )
             .id(store.attempt)
@@ -26,7 +26,7 @@ package struct SignInView: View {
                     } description: {
                         Text(errorMessage)
                     } actions: {
-                        Button("Try Again") { store.send(.tryAgainButtonTapped) }
+                        Button("Try Again") { store.send(.retryButtonTapped) }
                             .buttonStyle(.glassProminent)
                     }
                     .background(.background)
@@ -50,11 +50,11 @@ package struct SignInView: View {
 }
 
 private struct SignInWebView: UIViewRepresentable {
-    let loadingChanged: (Bool) -> Void
+    let pageLoadingChanged: (Bool) -> Void
     let sessionCaptured: ([String: String]) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(loadingChanged: loadingChanged, sessionCaptured: sessionCaptured)
+        Coordinator(pageLoadingChanged: pageLoadingChanged, sessionCaptured: sessionCaptured)
     }
 
     func makeUIView(context: Context) -> WKWebView {
@@ -75,18 +75,21 @@ private struct SignInWebView: UIViewRepresentable {
         webView.stopLoading()
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCookieStoreObserver {
+    @MainActor final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCookieStoreObserver {
         private var didCapture = false
-        private let loadingChanged: (Bool) -> Void
+        private let pageLoadingChanged: (Bool) -> Void
         private let sessionCaptured: ([String: String]) -> Void
 
-        package init(loadingChanged: @escaping (Bool) -> Void, sessionCaptured: @escaping ([String: String]) -> Void) {
-            self.loadingChanged = loadingChanged
+        package init(
+            pageLoadingChanged: @escaping (Bool) -> Void, sessionCaptured: @escaping ([String: String]) -> Void
+        ) {
+            self.pageLoadingChanged = pageLoadingChanged
             self.sessionCaptured = sessionCaptured
         }
 
         func cookiesDidChange(in cookieStore: WKHTTPCookieStore) {
-            Task { @MainActor in
+            // Checks `didCapture` again after the await: another change can capture while this one reads the jar.
+            Task.immediate {
                 guard !didCapture else { return }
                 var jar: [String: String] = [:]
                 for cookie in await cookieStore.allCookies() where cookie.domain.hasSuffix("x.com") {
@@ -109,15 +112,15 @@ private struct SignInWebView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-            loadingChanged(true)
+            pageLoadingChanged(true)
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            loadingChanged(false)
+            pageLoadingChanged(false)
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
-            loadingChanged(false)
+            pageLoadingChanged(false)
         }
     }
 }
