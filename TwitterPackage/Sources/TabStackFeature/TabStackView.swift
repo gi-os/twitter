@@ -38,6 +38,7 @@ package struct TabStackView: View {
     /// A column being pulled down by its bar, which the columns after it follow.
     @State private var pull: ColumnPull?
     @Environment(\.columnStripWidth) private var stripWidth
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     /// A Close tapped in a column: the strip slides the closed columns off before they're removed.
@@ -102,6 +103,9 @@ package struct TabStackView: View {
                 // Held at the leading edge whenever columns are possible, not only while they're shown: as the last one
                 // goes the strip settles back to its start, and the root stays put rather than riding in from the left.
                 .staysUnderNextColumn(isEnabled: layout.canShowColumns)
+                // A lone root centred on the backdrop slides aside as the first column comes in: moved, never resized,
+                // and animated on its own so nothing else rides along.
+                .animation(ColumnLayout.slide) { $0.offset(x: layout.leadingInset) }
 
                 if layout.showsColumns {
                     ForEach(Array(store.path.ids.enumerated()), id: \.element) { index, id in
@@ -127,12 +131,10 @@ package struct TabStackView: View {
                             .staysUnderNextColumn(isEnabled: true)
                             .transition(
                                 .asymmetric(
-                                    insertion: .offset(
-                                        x: layout.entranceOffset(ofColumn: index + 1, from: previousLayout)
-                                    ),
-                                    // Gone at once: every way of closing a column has already moved it off screen
-                                    // (sliding the strip back, pulling it down), and a column left in place while it
-                                    // faded would hold the root aside as it widens.
+                                    // With Reduce Motion, a column fades in where it lands instead of sliding there.
+                                    insertion: reduceMotion
+                                        ? .opacity
+                                        : .offset(x: layout.entranceOffset(ofColumn: index + 1, from: previousLayout)),
                                     removal: .identity
                                 )
                             )
@@ -140,18 +142,19 @@ package struct TabStackView: View {
                     }
                 }
             }
-            // A lone root centred on the backdrop moves aside as the first column comes in.
-            .padding(.leading, layout.leadingInset)
             // Cards lie within the window's layout margins: down from the top by as much as the bottom keeps clear,
             // and in from the sides by the system's margin.
             .padding(.top, cardMargins?.top ?? 0)
-            // Columns slide in and out; on one stack the navigation stack animates its own pushes.
-            .animation(layout.canShowColumns ? ColumnLayout.slide : nil, value: store.path.ids)
+            // Columns slide in; on one stack the navigation stack animates its own pushes. Closed columns go at once:
+            // every way of closing one has already moved it off screen, and one kept alive by an animation would go on
+            // sending actions after its state is gone.
+            .animation(
+                layout.canShowColumns && store.path.count >= shownDepth ? ColumnLayout.slide : nil,
+                value: store.path.ids)
         }
         .padding(.leading, cardMargins?.leading ?? 0)
         .padding(.trailing, cardMargins?.trailing ?? 0)
         // Easing in and out as the root is left alone or joined.
-        .animation(ColumnLayout.slide, value: store.path.isEmpty)
         .background {
             if layout.canShowColumns { ColumnBackdrop() }
 
@@ -194,8 +197,9 @@ package struct TabStackView: View {
         // corners clear the display's.
         let leading = ColumnCard.clearance(from: corners.topLeading)
         let trailing = ColumnCard.clearance(from: corners.topTrailing)
-        // A root alone on a flat display sits further in, a sheet on the desk rather than across it.
-        let sideMargin: CGFloat = store.path.isEmpty && measuredGeometry.fold == nil ? 2 : 1
+        // The same with or without columns, so opening one never resizes anything. (A lone root on a wide flat display
+        // is a column centred on the desk, so it sits well in from the sides anyway.)
+        let sideMargin: CGFloat = 1
         return EdgeInsets(
             top: max(safeArea.top + margins.top, safeArea.bottom + margins.bottom, leading, trailing),
             leading: max(margins.leading * sideMargin, leading),
@@ -238,7 +242,7 @@ package struct TabStackView: View {
         guard firstRemoved < ids.count else { return }
         // In one animated transaction, so everything that follows from the columns going (the root's width
         // and place, the sidebar opening out) moves together.
-        store.send(.path(.popFrom(id: ids[firstRemoved])), animation: ColumnLayout.slide)
+        store.send(.path(.popFrom(id: ids[firstRemoved])))
     }
 
     private var path:
@@ -414,13 +418,15 @@ private struct ColumnPull: Equatable {
     var offset: CGFloat
 }
 
-/// Pulls a column down by its bar to close it, and every column after it: the pulled column follows the finger and
-/// each after it trails a little behind, so it's plain they're going together. Let go far enough (or flicked) they drop
-/// off the bottom. Only a drag that starts in the bar and heads down counts, so it never competes with scrolling or
-/// pull to refresh, and it runs alongside the bar's buttons rather than in place of them.
+/// Pulls a column down by its bar to close it, and every column after it: the pulled column tracks the finger one to
+/// one and each after it trails a little behind, so it's plain they're going together. Let go, and where the throw would
+/// come to rest decides: far enough down and the columns drop away, carrying on at the finger's speed; otherwise they
+/// spring back up. Only a pull that starts in the bar and heads down counts (see ``DownwardPanGesture``); pushed back
+/// above where it started, the column resists.
 private struct PullDownToClose: ViewModifier {
     /// The bar, and the status bar above it on a display that has one there.
     static let barHeight: CGFloat = 110
+    /// How far down a pull has to be headed, projected from its speed, to close the column.
     static let closingDistance: CGFloat = 160
     /// How far behind the column before it each following column trails.
     static let followingLag: CGFloat = 40
@@ -428,45 +434,66 @@ private struct PullDownToClose: ViewModifier {
     let column: Int
     @Binding var pull: ColumnPull?
     let close: () -> Void
-    @State private var isTracking = false
+    @State private var height: CGFloat = 0
 
     func body(content: Content) -> some View {
         let lag = pull.map { column - $0.column } ?? -1
         content
             // Each column after the pulled one follows it, a little further behind the further along it is.
-            .offset(y: lag >= 0 ? max((pull?.offset ?? 0) - CGFloat(lag) * Self.followingLag, 0) : 0)
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 12)
-                    .onChanged { value in
-                        if !isTracking {
-                            guard pull == nil, value.startLocation.y < Self.barHeight,
-                                value.translation.height > abs(value.translation.width)
-                            else { return }
-                            isTracking = true
+            .offset(
+                y: lag >= 0 ? max((pull?.offset ?? 0) - CGFloat(lag) * Self.followingLag, lag > 0 ? 0 : -.infinity) : 0
+            )
+            .onGeometryChange(for: CGFloat.self) {
+                $0.size.height
+            } action: {
+                height = $0
+            }
+            .gesture(
+                DownwardPanGesture(
+                    region: Self.barHeight,
+                    onChanged: { value in
+                        guard pull == nil || pull?.column == column else { return }
+                        let offset =
+                            value.translation >= 0
+                            ? value.translation
+                            : FluidMotion.rubberBand(value.translation, dimension: height)
+                        var transaction = Transaction()
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) {
+                            pull = ColumnPull(column: column, offset: offset)
                         }
-                        pull = ColumnPull(column: column, offset: max(value.translation.height, 0))
-                    }
-                    .onEnded { value in
-                        guard isTracking else { return }
-                        isTracking = false
-                        if value.translation.height > Self.closingDistance
-                            || value.predictedEndTranslation.height > 2 * Self.closingDistance
-                        {
-                            withAnimation(.snappy(duration: 0.25)) {
-                                pull?.offset = 1_500
+                    },
+                    onEnded: { value in
+                        guard let current = pull, current.column == column else { return }
+                        let projected = value.translation + FluidMotion.projection(of: value.velocity)
+                        if projected > Self.closingDistance, value.velocity > -300 {
+                            // Off the bottom, at the speed it was thrown.
+                            let target = height + Self.followingLag * 4
+                            withAnimation(
+                                FluidMotion.spring(
+                                    from: current.offset, to: target, velocity: value.velocity, response: 0.3)
+                            ) {
+                                pull?.offset = target
                             } completion: {
                                 // Left where it dropped, off screen: the stack lets go of the pull once the columns
                                 // are gone, so nothing springs back into view while they leave.
                                 close()
                             }
                         } else {
-                            withAnimation(.snappy) {
+                            // Back up, settling with a little give if it was flicked back.
+                            withAnimation(
+                                FluidMotion.spring(
+                                    from: current.offset, to: 0, velocity: value.velocity,
+                                    dampingFraction: abs(value.velocity) > 300 ? 0.8 : 1
+                                )
+                            ) {
                                 pull?.offset = 0
                             } completion: {
-                                pull = nil
+                                if pull?.offset == 0 { pull = nil }
                             }
                         }
                     }
+                )
             )
     }
 }
@@ -637,8 +664,10 @@ struct ColumnGeometry: Equatable {
 struct ColumnLayout: Equatable {
     /// How far past its start the strip is pulled before letting go throws the opened columns away (Twitter for iPad).
     static let throwDistance: CGFloat = 120
-    /// Columns sliding in, out, and back to where they rest: quick, and settling without a bounce.
-    static let slide: Animation = .snappy(duration: 0.28)
+    /// Columns sliding in, out, and back to where they rest after a tap: a critically damped spring (response 0.35),
+    /// since a tap gives no momentum for an overshoot to answer. Springs retarget from wherever they are, keeping their
+    /// speed, so a column opened mid-slide carries on rather than restarting.
+    static let slide: Animation = .spring(response: 0.35, dampingFraction: 1)
     /// Twitter for iPad's column: two fill iPhone Duo's inner display in landscape, and one leaves a readable sliver
     /// of the previous column in portrait.
     static let preferredColumnWidth: CGFloat = 476

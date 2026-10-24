@@ -28,7 +28,6 @@ package struct MainView: View {
             geometry: sidebarGeometry,
             verticalBarEdge: toolbarVerticalEdge,
             isRegular: horizontalSizeClass == .regular && verticalSizeClass == .regular,
-            isShowingColumns: !tabStack(store.selectedTab).path.isEmpty
         )
         // Measured outside the layers, which reach into the side bar they measure.
         ZStack(alignment: placement.edge == .trailing ? .leading : .trailing) {
@@ -76,9 +75,8 @@ package struct MainView: View {
             .environment(\.hasClassicSidebar, true)
             // Laid out for the width they'll have once the sidebar has settled (see `columnStripWidth`), so the columns
             // are placed once rather than chasing the sidebar frame by frame.
-            .frame(width: placement.stripWidth)
-            // Resizing with the sidebar, on the same curve, so the columns inside ease to their places with it.
-            .animation(TabStackView.columnSlide, value: placement.stripWidth)
+            // Before the window is measured there's no width to give.
+            .frame(width: placement.stripWidth > 0 ? placement.stripWidth : nil)
             .environment(\.columnStripWidth, placement.stripWidth)
             // Down past the home indicator, as a tab view is: the tabs keep their own content clear of it. The
             // sidebar keeps clear of it and of the camera itself.
@@ -181,6 +179,8 @@ private struct SidebarGeometry: Equatable {
 private struct SidebarPlacement: Equatable {
     /// The narrowest column worth reading beside the expanded sidebar.
     static let expandingWidth: CGFloat = 400
+    /// The narrowest column of two side by side (`ColumnLayout.minimumColumnWidth`).
+    static let twoColumnWidth: CGFloat = 400
     static let collapsedWidth: CGFloat = 72
     static let expandedWidth: CGFloat = 220
     /// The status bar at the top of iPhone Duo's side bar: the sidebar's first button goes just under it.
@@ -198,11 +198,14 @@ private struct SidebarPlacement: Equatable {
     ///   anywhere: the side bar beside the content, under the camera and status bar.
     /// - Parameter isRegular: Whether the window is regular both ways: room for a column and a sidebar that names its
     ///   tabs. A compact window keeps the strip.
-    init(geometry: SidebarGeometry, verticalBarEdge: HorizontalEdge?, isRegular: Bool, isShowingColumns: Bool) {
+    init(geometry: SidebarGeometry, verticalBarEdge: HorizontalEdge?, isRegular: Bool) {
         let windowWidth = geometry.width + geometry.leadingInset + geometry.trailingInset
         // Expanded beside a lone column, where the window is regular and wide enough for both.
+        // Expanded where the window can't show two columns side by side anyway (the inner display upright), so it
+        // never changes as columns open and close: nothing beside it resizes, and the columns only ever slide.
         let canExpand =
-            isRegular && !isShowingColumns && windowWidth >= Self.expandingWidth + Self.expandedWidth
+            isRegular && windowWidth >= Self.expandingWidth + Self.expandedWidth
+            && windowWidth - Self.collapsedWidth < 2 * Self.twoColumnWidth
         if let verticalBarEdge {
             // In the system's side bar, under its status bar, as its own vertical bar would be: at its width, or
             // reaching past it when expanded.
@@ -274,7 +277,7 @@ private struct TabLabel: View {
                         try? await Task.sleep(for: .seconds(2))
                         // `--pop`: close as a pulled-down or thrown-away column does, straight out of the path.
                         if arguments.contains("--pop"), let id = store.home.path.ids.first {
-                            store.send(.home(.path(.popFrom(id: id))), animation: TabStackView.columnSlide)
+                            store.send(.home(.path(.popFrom(id: id))))
                         } else {
                             store.send(.home(.tabReselected))
                         }

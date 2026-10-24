@@ -96,7 +96,7 @@ private struct ClassicSideBarModifier: ViewModifier {
             GeometryReader { proxy in
                 HStack(spacing: 0) {
                     ClassicSideBarFill(hairlineEdge: .trailing)
-                        .frame(width: proxy.safeAreaInsets.leading)
+                        .frame(width: max(proxy.safeAreaInsets.leading, 0))
                         .allowsHitTesting(false)
 
                     Spacer(minLength: 0)
@@ -104,7 +104,7 @@ private struct ClassicSideBarModifier: ViewModifier {
 
                     ClassicSideBarFill(hairlineEdge: .leading)
                         .allowsHitTesting(false)
-                        .frame(width: proxy.safeAreaInsets.trailing)
+                        .frame(width: max(proxy.safeAreaInsets.trailing, 0))
                 }
                 .ignoresSafeArea()
             }
