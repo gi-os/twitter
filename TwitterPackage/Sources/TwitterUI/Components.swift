@@ -308,7 +308,7 @@ extension Date {
     package var shortRelative: String {
         let seconds = Date.now.timeIntervalSince(self)
         switch seconds {
-        case ..<60: return "\(max(Int(seconds), 0))s"
+        case ..<60: return "\(Swift.max(Int(seconds), 0))s"
         case ..<3_600: return "\(Int(seconds / 60))m"
         case ..<86_400: return "\(Int(seconds / 3_600))h"
         case ..<(86_400 * 7): return "\(Int(seconds / 86_400))d"
