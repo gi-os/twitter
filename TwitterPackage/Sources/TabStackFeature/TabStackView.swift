@@ -77,6 +77,7 @@ package struct TabStackView: View {
                         .classicSideBar()
                 }
                 .id(layout.canShowColumns)
+                .barStartsAtCardTop(cardMargins != nil)
                 .containerRelativeFrame(.horizontal) { width, _ in
                     layout.showsColumns ? layout.width(ofColumn: 0) : width
                 }
@@ -101,6 +102,7 @@ package struct TabStackView: View {
                                 close: { requestClose(after: index == 0 ? nil : store.path.ids[index - 1]) },
                                 compose: { store.send(.composeButtonTapped) }
                             )
+                            .barStartsAtCardTop(cardMargins != nil)
                             .frame(width: layout.width(ofColumn: index + 1))
                             .background { ColumnPaper() }
                             // Pulled down by its bar, it goes, and every column after it follows.
@@ -515,6 +517,9 @@ private struct ComposeToolbarItem: ToolbarContent {
 }
 
 extension View {
+    /// The space UIKit leaves above a navigation bar in a view with no top safe area (iOS 27).
+    fileprivate static var navigationBarTopSpacing: CGFloat { 24 }
+
     /// Twitter's gentle "no": a short shake when asked to open what's already showing.
     fileprivate func alreadyHereShake(trigger: Int, isActive: Bool) -> some View {
         modifier(AlreadyHereShake(isActive: isActive, trigger: trigger))
@@ -526,6 +531,13 @@ extension View {
         column: Int, pull: Binding<ColumnPull?>, close: @escaping () -> Void
     ) -> some View {
         modifier(PullDownToClose(column: column, pull: pull, close: close))
+    }
+
+    /// Lifts a card's navigation stack by the spacing UIKit leaves above a navigation bar whose view has no top
+    /// safe area, so the bar starts at the card's top edge; the card's mask hides the empty band above it. UIKit
+    /// decides both the bar's height and that spacing itself, and nothing public moves either.
+    fileprivate func barStartsAtCardTop(_ isEnabled: Bool) -> some View {
+        padding(.top, isEnabled ? -Self.navigationBarTopSpacing : 0)
     }
 
     /// Twitter for iPad's columns as cards on the backdrop: dropped a little from the top, with rounded top corners.
