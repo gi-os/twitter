@@ -31,6 +31,9 @@ package struct TabStackView: View {
         self.title = title
     }
 
+    /// How columns slide in and out, for anything that should move in step with them.
+    package static let columnSlide = ColumnLayout.slide
+
     @State private var geometry = ColumnGeometry()
     /// A Close tapped in a column: the strip slides the closed columns off before they're removed.
     @State private var closing: ColumnClosing?
@@ -236,9 +239,10 @@ private struct ColumnStrip<Content: View>: View {
         .onChange(of: newestColumn) {
             withAnimation(ColumnLayout.slide) { position.scrollTo(x: layout.offset) }
         }
-        // Folding, unfolding and turning keep the newest column at the trailing edge, without animating.
+        // Folding, unfolding, turning and the sidebar changing width keep the newest column at the trailing edge,
+        // sliding with everything else rather than jumping.
         .onChange(of: geometry) {
-            position.scrollTo(x: layout.offset)
+            withAnimation(ColumnLayout.slide) { position.scrollTo(x: layout.offset) }
         }
         .onChange(of: closing) {
             guard let closing else { return }
@@ -355,12 +359,13 @@ private struct ColumnCard: ViewModifier {
 
     func body(content: Content) -> some View {
         if isEnabled {
+            // Its top a few points below the display's, wherever the safe area starts, and open at the bottom.
             content
                 .mask {
-                    UnevenRoundedRectangle(topLeadingRadius: 8, topTrailingRadius: 8)
-                        .ignoresSafeArea(edges: .bottom)
+                    UnevenRoundedRectangle(topLeadingRadius: 6, topTrailingRadius: 6)
+                        .padding(.top, 4)
+                        .ignoresSafeArea(edges: .vertical)
                 }
-                .padding(.top, 10)
         } else {
             content
         }
@@ -658,6 +663,25 @@ private struct TabStackPathView: View {
         case .web(let store):
             WebPanelView(store: store)
                 .classicTitleBar()
+        }
+    }
+}
+
+/// Back, for a sidebar to carry where everything is pushed onto one stack (the outer display): iPhone Duo puts the
+/// stack's own back button in its side bar, which the sidebar stands in for. Swiping back works as ever.
+package struct SidebarBackButton: View {
+    let store: StoreOf<TabStack>
+
+    package init(store: StoreOf<TabStack>) {
+        self.store = store
+    }
+
+    package var body: some View {
+        if !store.canShowColumns, let id = store.path.ids.last {
+            Button("Back", systemImage: "chevron.backward") {
+                store.send(.path(.popFrom(id: id)))
+            }
+            .buttonStyle(.classicBar(isOnSideBar: true))
         }
     }
 }

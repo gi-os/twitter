@@ -73,8 +73,6 @@ package struct MainView: View {
                     }
                 }
                 .tabViewStyle(.tabBarOnly)
-                // The sidebar has the side bar's edge; navigation bars keep their items (back above all) along the top.
-                .toolbarVerticalBehavior(.disabled)
                 .environment(\.hasClassicSidebar, true)
                 .environment(\.showsViewCounts, placement.isInnerDisplay)
 
@@ -90,6 +88,8 @@ package struct MainView: View {
                     ? [.bottom, placement.edge == .leading ? .leading : .trailing] : .bottom
             )
         }
+        // In step with the columns sliding as one opens or closes.
+        .animation(TabStackView.columnSlide, value: placement)
         .onGeometryChange(for: SidebarGeometry.self) { proxy in
             SidebarGeometry(proxy: proxy)
         } action: { geometry in
@@ -114,9 +114,9 @@ package struct MainView: View {
             // Its own room is the side bar's safe area; it lays out across all of it.
             .ignoresSafeArea(.container, edges: placement.isInSystemSideBar ? .horizontal : [])
             .frame(width: placement.width)
-            // Its width settles at once (no animation of its own), so a column opening slides in against the final
-            // layout instead of one that's still moving; nothing of the wider sidebar spills over it meanwhile.
-            .clipped()
+            // Nothing of the wider sidebar spills sideways over the tabs as it collapses; up and down it still reaches
+            // under the status bar and home indicator.
+            .mask { Rectangle().ignoresSafeArea(edges: .vertical) }
             .zIndex(1)
     }
 
@@ -136,6 +136,8 @@ package struct MainView: View {
             compose: { tabStack(store.selectedTab).send(.composeButtonTapped) },
             reselect: { tabStack($0).send(.tabReselected) }
         ) {
+            SidebarBackButton(store: tabStack(store.selectedTab))
+
             FrontmostColumnMenu(store: tabStack(store.selectedTab))
         }
     }
