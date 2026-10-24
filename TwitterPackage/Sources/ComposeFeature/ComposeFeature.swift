@@ -10,6 +10,9 @@ package struct ComposeFeature {
     package struct State: Equatable {
         let draft: Draft
         var errorMessage: String?
+        /// The sheet is on its way out: a second tap on Cancel, while it slides away, would reach a parent that has
+        /// already let go of it.
+        var isDismissing = false
         var isPosting = false
         var text = ""
 
@@ -21,7 +24,7 @@ package struct ComposeFeature {
 
         var remainingCharacters: Int { Self.characterLimit - text.count }
         var canPost: Bool {
-            !isPosting && remainingCharacters >= 0
+            !isPosting && !isDismissing && remainingCharacters >= 0
                 && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
     }
@@ -47,7 +50,8 @@ package struct ComposeFeature {
 
             case .cancelButtonTapped:
                 // Dismissing cancels the in-flight post effect, which could leave a post sent but unconfirmed.
-                guard !state.isPosting else { return .none }
+                guard !state.isPosting, !state.isDismissing else { return .none }
+                state.isDismissing = true
                 return .run { _ in await dismiss() }
 
             case .postButtonTapped:
@@ -68,6 +72,7 @@ package struct ComposeFeature {
 
             case .postResponse(.success):
                 state.isPosting = false
+                state.isDismissing = true
                 return .run { _ in await dismiss() }
 
             case .postResponse(.failure(let error)):

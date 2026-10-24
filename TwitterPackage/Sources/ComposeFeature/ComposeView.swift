@@ -54,7 +54,7 @@ package struct ComposeView: View {
                     Button("Cancel", systemImage: "xmark", role: .cancel) {
                         store.send(.cancelButtonTapped)
                     }
-                    .disabled(store.isPosting)
+                    .disabled(store.isPosting || store.isDismissing)
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
