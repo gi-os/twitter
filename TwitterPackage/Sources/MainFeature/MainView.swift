@@ -74,9 +74,11 @@ package struct MainView: View {
             }
             .tabViewStyle(.tabBarOnly)
             .environment(\.hasClassicSidebar, true)
-            // At the width they'll have once the sidebar has settled, straight away: the sidebar animates over them
-            // rather than squeezing them a little every frame, so opening a column lays the columns out once.
+            // Laid out for the width they'll have once the sidebar has settled (see `columnStripWidth`), so the columns
+            // are placed once rather than chasing the sidebar frame by frame.
             .frame(width: placement.stripWidth)
+            // Widening and narrowing with the sidebar, so a root left alone eases out to its new width.
+            .animation(TabStackView.columnSlide, value: placement.stripWidth)
             .environment(\.columnStripWidth, placement.stripWidth)
             // Down past the home indicator, as a tab view is: the tabs keep their own content clear of it. The
             // sidebar keeps clear of it and of the camera itself.

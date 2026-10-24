@@ -80,8 +80,6 @@ package struct TabStackView: View {
                 .containerRelativeFrame(.horizontal) { width, _ in
                     layout.showsColumns ? layout.width(ofColumn: 0) : width
                 }
-                // The root reflows once, at its new width, rather than on every frame of the new column sliding in.
-                .transaction(value: layout.showsColumns) { $0.animation = nil }
                 .dimsUnderLeadingEdge(isEnabled: layout.showsColumns)
                 .columnCard(isEnabled: cardMargins != nil)
                 // Alone on the backdrop, the root casts onto it; opened columns cover this as they slide over.
@@ -167,11 +165,10 @@ package struct TabStackView: View {
         }
     }
 
-    /// Where columns are cards on the backdrop: a window regular both ways and not across a fold, where they're
-    /// pages edge to edge.
+    /// Where columns are cards on the backdrop: a window regular both ways. Across a fold the two pages still meet at
+    /// its middle; only the outer edges and the top step in.
     private var cardMargins: EdgeInsets? {
-        guard measuredGeometry.fold == nil, horizontalSizeClass == .regular, verticalSizeClass == .regular
-        else { return nil }
+        guard horizontalSizeClass == .regular, verticalSizeClass == .regular else { return nil }
         let margins = measuredGeometry.margins
         let safeArea = measuredGeometry.safeArea
         let corners = measuredGeometry.corners
