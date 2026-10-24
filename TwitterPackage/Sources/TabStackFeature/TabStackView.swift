@@ -38,7 +38,6 @@ package struct TabStackView: View {
     /// A column being pulled down by its bar, which the columns after it follow.
     @State private var pull: ColumnPull?
     @Environment(\.columnStripWidth) private var stripWidth
-    @Environment(\.windowMargins) private var windowMargins
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     /// A Close tapped in a column: the strip slides the closed columns off before they're removed.
@@ -165,15 +164,17 @@ package struct TabStackView: View {
     /// Where columns are cards on the backdrop: a window regular both ways and not across a fold, where they're
     /// pages edge to edge.
     private var cardMargins: EdgeInsets? {
-        guard let windowMargins, measuredGeometry.fold == nil,
-            horizontalSizeClass == .regular, verticalSizeClass == .regular
+        guard measuredGeometry.fold == nil, horizontalSizeClass == .regular, verticalSizeClass == .regular
         else { return nil }
-        let beyond = windowMargins.beyondSafeArea
+        let margins = measuredGeometry.margins
+        let safeArea = measuredGeometry.safeArea
+        // Sideways by the container's margins; down from the top as far as the bottom keeps clear (the home
+        // indicator), or the top itself if that's further (a status bar).
         return EdgeInsets(
-            top: max(windowMargins.layoutMargins.top, windowMargins.layoutMargins.bottom),
-            leading: beyond.leading,
+            top: max(safeArea.top + margins.top, safeArea.bottom + margins.bottom),
+            leading: margins.leading,
             bottom: 0,
-            trailing: beyond.trailing
+            trailing: margins.trailing
         )
     }
 
@@ -419,7 +420,8 @@ private struct ColumnCard: ViewModifier {
     let isEnabled: Bool
 
     func body(content: Content) -> some View {
-        content.clipShape(UnevenRoundedRectangle(topLeadingRadius: isEnabled ? 4 : 0, topTrailingRadius: isEnabled ? 4 : 0))
+        content.clipShape(
+            UnevenRoundedRectangle(topLeadingRadius: isEnabled ? 4 : 0, topTrailingRadius: isEnabled ? 4 : 0))
     }
 }
 
@@ -522,12 +524,18 @@ extension View {
 struct ColumnGeometry: Equatable {
     /// The fold's horizontal extent in this view's coordinates, when an active fold runs vertically through it.
     var fold: ClosedRange<CGFloat>?
+    /// The system's margins for content in this container (`ContentMarginGuide.container`), which lie inside its safe
+    /// area, and the safe area itself.
+    var margins = EdgeInsets()
+    var safeArea = EdgeInsets()
     var width: CGFloat = 0
 
     init() {}
 
     init(proxy: GeometryProxy) {
         width = proxy.size.width
+        margins = proxy.contentMargins(for: .container)
+        safeArea = proxy.safeAreaInsets
         let division = proxy.reservedRegions(kind: .division)
             .first { $0.frame.height > $0.frame.width }
         if let division, division.frame.minX > 0, division.frame.maxX < width {
@@ -754,9 +762,4 @@ package struct SidebarBackButton: View {
 extension EnvironmentValues {
     /// The width the column strip is settling to, when its window knows it before the strip can measure it.
     @Entry package var columnStripWidth: CGFloat? = nil
-}
-
-extension EnvironmentValues {
-    /// The window's layout margins, which column cards lie within.
-    @Entry package var windowMargins: WindowMargins? = nil
 }

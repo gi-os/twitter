@@ -12,7 +12,6 @@ package struct MainView: View {
     /// Per-window, so each main window reopens on the tab it was showing.
     @SceneStorage("selectedTab") private var savedTab = MainFeature.Tab.home
     @State private var sidebarGeometry = SidebarGeometry()
-    @State private var windowMargins: WindowMargins?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.toolbarVerticalEdge) private var toolbarVerticalEdge
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -84,7 +83,6 @@ package struct MainView: View {
                 // The columns lay out for the width they'll have once the sidebar has settled, not the width it's
                 // still animating away from, so opening a column reflows them once.
                 .environment(\.columnStripWidth, placement.stripWidth)
-                .environment(\.windowMargins, windowMargins)
                 // Down past the home indicator, as a tab view is: the tabs keep their own content clear of it. The
                 // sidebar beside them keeps clear of it and of the camera itself.
                 .ignoresSafeArea(.container, edges: .bottom)
@@ -102,7 +100,6 @@ package struct MainView: View {
         }
         // In step with the columns sliding as one opens or closes.
         .animation(TabStackView.columnSlide, value: placement)
-        .onWindowMarginsChange { windowMargins = $0 }
         .onGeometryChange(for: SidebarGeometry.self) { proxy in
             SidebarGeometry(proxy: proxy)
         } action: { geometry in
@@ -142,19 +139,18 @@ package struct MainView: View {
             topInset: placement.statusBarHeight,
             centerOffset: placement.isInSystemSideBar && !placement.isExpanded ? -5 : 0,
             compose: { tabStack(store.selectedTab).send(.composeButtonTapped) },
-            reselect: { tabStack($0).send(.tabReselected) }
-        ) {
-            SidebarBackButton(store: tabStack(store.selectedTab))
-        }
+            reselect: { tabStack($0).send(.tabReselected) },
+            actions: { SidebarBackButton(store: tabStack(store.selectedTab)) }
+        )
     }
 
     private static var tabs: [ClassicSidebarTab<MainFeature.Tab>] {
         [
-        ClassicSidebarTab("Home", icon: .home, id: MainFeature.Tab.home),
-        ClassicSidebarTab("Notifications", icon: .at, id: .notifications),
-        ClassicSidebarTab("Bookmarks", icon: .bookmark, id: .bookmarks),
-        ClassicSidebarTab("Profile", icon: .profile, id: .profile),
-        ClassicSidebarTab("Explore", icon: .hash, id: .explore)
+            ClassicSidebarTab("Home", icon: .home, id: MainFeature.Tab.home),
+            ClassicSidebarTab("Notifications", icon: .at, id: .notifications),
+            ClassicSidebarTab("Bookmarks", icon: .bookmark, id: .bookmarks),
+            ClassicSidebarTab("Profile", icon: .profile, id: .profile),
+            ClassicSidebarTab("Explore", icon: .hash, id: .explore)
         ]
     }
 
@@ -166,10 +162,9 @@ package struct MainView: View {
             isExpanded: false,
             centerOffset: -5,
             compose: nil,
-            reselect: { tabStack($0).send(.tabReselected) }
-        ) {
-            EmptyView()
-        }
+            reselect: { tabStack($0).send(.tabReselected) },
+            actions: { EmptyView() }
+        )
     }
 
     private func tabStack(_ tab: MainFeature.Tab) -> StoreOf<TabStack> {
