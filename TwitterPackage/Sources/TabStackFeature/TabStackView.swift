@@ -38,6 +38,7 @@ package struct TabStackView: View {
     /// A column being pulled down by its bar, which the columns after it follow.
     @State private var pull: ColumnPull?
     @Environment(\.columnStripWidth) private var stripWidth
+    @Environment(\.windowMargins) private var windowMargins
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     /// A Close tapped in a column: the strip slides the closed columns off before they're removed.
@@ -83,7 +84,7 @@ package struct TabStackView: View {
                 // The root reflows once, at its new width, rather than on every frame of the new column sliding in.
                 .transaction(value: layout.showsColumns) { $0.animation = nil }
                 .dimsUnderLeadingEdge(isEnabled: layout.showsColumns)
-                .columnCard(isEnabled: layout.showsCards || (layout.canShowColumns && isRegular))
+                .columnCard(isEnabled: cardMargins != nil)
                 // Alone on the backdrop, the root casts onto it; opened columns cover this as they slide over.
                 .overlay(alignment: .trailing) {
                     if layout.showsColumns { ClassicColumnShadow(edge: .trailing) }
@@ -109,7 +110,7 @@ package struct TabStackView: View {
                                 popColumns(after: index == 0 ? nil : store.path.ids[index - 1])
                             }
                             .dimsUnderLeadingEdge(isEnabled: true)
-                            .columnCard(isEnabled: layout.showsCards)
+                            .columnCard(isEnabled: cardMargins != nil)
                             // Outside the card, onto the column it lies on.
                             .background(alignment: .leading) { ClassicColumnShadow(edge: .leading) }
                             .alreadyHereShake(trigger: store.shake.count, isActive: store.shake.column == id)
@@ -129,9 +130,14 @@ package struct TabStackView: View {
             }
             // A lone root centred on the backdrop moves aside as the first column comes in.
             .padding(.leading, layout.leadingInset)
+            // Cards lie within the window's layout margins: down from the top by as much as the bottom keeps clear,
+            // and in from the sides by the system's margin.
+            .padding(.top, cardMargins?.top ?? 0)
             // Columns slide in and out; on one stack the navigation stack animates its own pushes.
             .animation(layout.canShowColumns ? ColumnLayout.slide : nil, value: store.path.ids)
         }
+        .padding(.leading, cardMargins?.leading ?? 0)
+        .padding(.trailing, cardMargins?.trailing ?? 0)
         .background {
             if layout.canShowColumns { ColumnBackdrop() }
 
@@ -156,14 +162,32 @@ package struct TabStackView: View {
         }
     }
 
-    /// Regular both ways: room around a lone root to show it as a card.
-    private var isRegular: Bool { horizontalSizeClass == .regular && verticalSizeClass == .regular }
+    /// Where columns are cards on the backdrop: a window regular both ways and not across a fold, where they're
+    /// pages edge to edge.
+    private var cardMargins: EdgeInsets? {
+        guard let windowMargins, measuredGeometry.fold == nil,
+            horizontalSizeClass == .regular, verticalSizeClass == .regular
+        else { return nil }
+        let beyond = windowMargins.beyondSafeArea
+        return EdgeInsets(
+            top: max(windowMargins.layoutMargins.top, windowMargins.layoutMargins.bottom),
+            leading: beyond.leading,
+            bottom: 0,
+            trailing: beyond.trailing
+        )
+    }
 
     /// The strip as measured, at the width it's settling to when the window says so (the sidebar beside it changing
     /// width at the same moment).
     private var geometry: ColumnGeometry {
         var geometry = measuredGeometry
         if let stripWidth, stripWidth > 0 { geometry.width = stripWidth }
+        if let cardMargins {
+            geometry.width -= cardMargins.leading + cardMargins.trailing
+            geometry.fold = geometry.fold.map {
+                ($0.lowerBound - cardMargins.leading)...($0.upperBound - cardMargins.leading)
+            }
+        }
         return geometry
     }
 
@@ -390,28 +414,12 @@ private struct PullDownToClose: ViewModifier {
     }
 }
 
-/// Shows a column as a card on the backdrop: its safe area, with sharp rounded top corners, so neither the display's
-/// own corners nor the status bar clip it. Nothing else is clipped: its content still runs down under the home
-/// indicator.
+/// Shows a column as a card on the backdrop: sharp rounded top corners where the strip's margins have set it down.
 private struct ColumnCard: ViewModifier {
     let isEnabled: Bool
 
     func body(content: Content) -> some View {
-        if isEnabled {
-            content
-                .mask {
-                    GeometryReader { proxy in
-                        let insets = proxy.safeAreaInsets
-                        UnevenRoundedRectangle(topLeadingRadius: 4, topTrailingRadius: 4)
-                            .padding(.top, insets.top)
-                            .padding(.leading, insets.leading)
-                            .padding(.trailing, insets.trailing)
-                    }
-                    .ignoresSafeArea()
-                }
-        } else {
-            content
-        }
+        content.clipShape(UnevenRoundedRectangle(topLeadingRadius: isEnabled ? 4 : 0, topTrailingRadius: isEnabled ? 4 : 0))
     }
 }
 
@@ -746,4 +754,9 @@ package struct SidebarBackButton: View {
 extension EnvironmentValues {
     /// The width the column strip is settling to, when its window knows it before the strip can measure it.
     @Entry package var columnStripWidth: CGFloat? = nil
+}
+
+extension EnvironmentValues {
+    /// The window's layout margins, which column cards lie within.
+    @Entry package var windowMargins: WindowMargins? = nil
 }

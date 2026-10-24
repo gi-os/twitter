@@ -12,6 +12,7 @@ package struct MainView: View {
     /// Per-window, so each main window reopens on the tab it was showing.
     @SceneStorage("selectedTab") private var savedTab = MainFeature.Tab.home
     @State private var sidebarGeometry = SidebarGeometry()
+    @State private var windowMargins: WindowMargins?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.toolbarVerticalEdge) private var toolbarVerticalEdge
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -83,6 +84,7 @@ package struct MainView: View {
                 // The columns lay out for the width they'll have once the sidebar has settled, not the width it's
                 // still animating away from, so opening a column reflows them once.
                 .environment(\.columnStripWidth, placement.stripWidth)
+                .environment(\.windowMargins, windowMargins)
                 // Down past the home indicator, as a tab view is: the tabs keep their own content clear of it. The
                 // sidebar beside them keeps clear of it and of the camera itself.
                 .ignoresSafeArea(.container, edges: .bottom)
@@ -100,6 +102,7 @@ package struct MainView: View {
         }
         // In step with the columns sliding as one opens or closes.
         .animation(TabStackView.columnSlide, value: placement)
+        .onWindowMarginsChange { windowMargins = $0 }
         .onGeometryChange(for: SidebarGeometry.self) { proxy in
             SidebarGeometry(proxy: proxy)
         } action: { geometry in
