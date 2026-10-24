@@ -57,7 +57,7 @@ package struct PostRowStylePicker: View {
                 Label(style.title, systemImage: style.systemImage)
             }
         } label: {
-            Label("Post Layout", systemImage: "rectangle.grid.1x2")
+            Label("Tweet Layout", systemImage: "rectangle.grid.1x2")
         }
         .pickerStyle(.menu)
     }

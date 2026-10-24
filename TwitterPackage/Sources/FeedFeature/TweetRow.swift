@@ -25,7 +25,7 @@ package struct TweetRow: View {
     package var body: some View {
         VStack(alignment: .leading, spacing: 4 * metrics.unit) {
             if let reposter = item.repostedBy {
-                ContextLabel(symbol: "arrow.2.squarepath", text: "\(reposter.name) reposted")
+                ContextLabel(symbol: "arrow.2.squarepath", text: "\(reposter.name) retweeted")
             } else if let context = item.socialContext {
                 ContextLabel(symbol: item.socialSymbol ?? "sparkles", text: context)
             }
@@ -55,10 +55,12 @@ package struct TweetRow: View {
         .onTapGesture { store.send(.tweetTapped(tweet)) }
         .contextMenu {
             TweetMenu(tweet: tweet, engagement: engagement, store: store)
+        } preview: {
+            ThreadPreview(tweet: tweet, store: store)
         }
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isButton)
-        .accessibilityAction(named: "Open Post") { store.send(.tweetTapped(tweet)) }
+        .accessibilityAction(named: "Open Tweet") { store.send(.tweetTapped(tweet)) }
     }
 
     /// Twitter's timeline row: the avatar (and the thread line under it) in a column of its own, the author line and
@@ -152,6 +154,8 @@ package struct TweetRow: View {
                     // Its own menu, so pressing the quoted post lifts that post rather than the one quoting it.
                     .contextMenu {
                         TweetMenu(tweet: quoted, engagement: store.engagements.engagement(for: quoted), store: store)
+                    } preview: {
+                        ThreadPreview(tweet: quoted, store: store)
                     }
             } else if let quotedTombstone = tweet.quotedTombstone {
                 TombstoneView(tombstone: quotedTombstone)
@@ -240,7 +244,7 @@ private struct ReplyRestrictionBanner: View {
                 Text(restriction.message)
 
                 if !restriction.viewerCanReply {
-                    Text("You can't reply to this post.")
+                    Text("You can't reply to this Tweet.")
                         .foregroundStyle(.secondary)
                 }
             }
@@ -284,22 +288,24 @@ private struct FocusedStatsLine: View {
         if reposts > 0 || tweet.quoteCount > 0 || likes > 0 {
             HStack(spacing: 16) {
                 if reposts > 0 {
-                    FocusedStat(count: reposts, label: reposts == 1 ? "Repost" : "Reposts") {
+                    FocusedStat(count: reposts, label: reposts == 1 ? "Retweet" : "Retweets") {
                         store.send(.repostsButtonTapped(tweet))
                     }
                 }
 
                 if tweet.quoteCount > 0 {
-                    FocusedStat(count: tweet.quoteCount, label: tweet.quoteCount == 1 ? "Quote" : "Quotes") {
+                    FocusedStat(count: tweet.quoteCount, label: tweet.quoteCount == 1 ? "Quote Tweet" : "Quote Tweets") {
                         store.send(.quotesButtonTapped(tweet))
                     }
                 }
 
                 if likes > 0 {
-                    FocusedStat(count: likes, label: likes == 1 ? "Like" : "Likes") {
-                        store.send(.likesButtonTapped(tweet))
-                    }
-                    .disabled(tweet.author.id != viewer?.id)
+                    // Someone else's likes are private: the count is still shown, just not as a button.
+                    FocusedStat(
+                        count: likes,
+                        label: likes == 1 ? "Like" : "Likes",
+                        action: tweet.author.id == viewer?.id ? { store.send(.likesButtonTapped(tweet)) } : nil
+                    )
                 }
             }
             .font(metrics.font(.subtext1))
@@ -308,23 +314,38 @@ private struct FocusedStatsLine: View {
     }
 }
 
+/// A count and what it counts. Without an action it's plain text rather than a disabled button, which would dim it
+/// beside its neighbours.
 private struct FocusedStat: View {
     let count: Int
     let label: LocalizedStringKey
-    let action: () -> Void
+    let action: (() -> Void)?
+
+    init(count: Int, label: LocalizedStringKey, action: (() -> Void)? = nil) {
+        self.count = count
+        self.label = label
+        self.action = action
+    }
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 4) {
-                Text(count.compact)
-                    .bold()
-                    .foregroundStyle(.twitterPrimary)
-
-                Text(label)
-                    .foregroundStyle(.twitterSecondary)
-            }
+        if let action {
+            Button(action: action) { content }
+                .buttonStyle(.plain)
+        } else {
+            content
+                .accessibilityElement(children: .combine)
         }
-        .buttonStyle(.plain)
+    }
+
+    private var content: some View {
+        HStack(spacing: 4) {
+            Text(count.compact)
+                .bold()
+                .foregroundStyle(.twitterPrimary)
+
+            Text(label)
+                .foregroundStyle(.twitterSecondary)
+        }
     }
 }
 
@@ -498,19 +519,19 @@ private struct RepostMenu: View {
             Button {
                 store.send(.repostButtonTapped(tweet))
             } label: {
-                Label(engagement.repost.isOn ? "Undo Repost" : "Repost", systemImage: "arrow.2.squarepath")
+                Label(engagement.repost.isOn ? "Undo Retweet" : "Retweet", systemImage: "arrow.2.squarepath")
             }
 
             Button {
                 store.send(.quoteButtonTapped(tweet))
             } label: {
-                Label("Quote", systemImage: "quote.bubble")
+                Label("Quote Tweet", systemImage: "quote.bubble")
             }
         } label: {
             EngagementLabel(icon: engagement.repost.isOn ? .repost : .repostStroke, count: engagement.repost.count)
                 .foregroundStyle(engagement.repost.isOn ? .twitterRepost : .twitterSecondary)
         }
-        .accessibilityLabel(engagement.repost.isOn ? "Undo Repost" : "Repost")
+        .accessibilityLabel(engagement.repost.isOn ? "Undo Retweet" : "Retweet")
         .accessibilityValue(engagement.repost.count.formatted())
     }
 }
@@ -567,13 +588,13 @@ package struct TweetMenu: View {
         Button {
             store.send(.repostButtonTapped(tweet))
         } label: {
-            Label(engagement.repost.isOn ? "Undo Repost" : "Repost", systemImage: "arrow.2.squarepath")
+            Label(engagement.repost.isOn ? "Undo Retweet" : "Retweet", systemImage: "arrow.2.squarepath")
         }
 
         Button {
             store.send(.quoteButtonTapped(tweet))
         } label: {
-            Label("Quote", systemImage: "quote.bubble")
+            Label("Quote Tweet", systemImage: "quote.bubble")
         }
 
         PostActivityMenu(tweet: tweet, isOwnPost: tweet.author.id == viewer?.id, store: store)
@@ -685,6 +706,8 @@ private struct NotificationMenu: ViewModifier {
         if let tweet = notification.tweet {
             content.contextMenu {
                 TweetMenu(tweet: tweet, engagement: store.engagements.engagement(for: tweet), store: store)
+            } preview: {
+                ThreadPreview(tweet: tweet, store: store)
             }
         } else if let user = notification.users.first {
             content.profilePreview(for: user) { store.send(.authorTapped(user)) }

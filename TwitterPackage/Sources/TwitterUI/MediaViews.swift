@@ -21,7 +21,6 @@ package struct MediaGrid: View {
     @State private var isViewerPresented = false
     @State private var viewerSelection: Media.ID?
     @Namespace private var zoomNamespace
-    @Environment(\.displayScale) private var displayScale
 
     /// Twitter's photo and video radius.
     static let cornerRadius: CGFloat = 12
@@ -31,9 +30,16 @@ package struct MediaGrid: View {
     package var body: some View {
         Group {
             if media.count == 1, let item = media.first {
-                tile(item)
-                    .aspectRatio(max(item.aspectRatio, 0.75), contentMode: .fit)
-                    .frame(maxHeight: maxHeight * 1.4)
+                let aspectRatio = max(item.aspectRatio, 0.75)
+                // The full width of the row, as tall as the item at that width up to the cap; a taller item fills it
+                // and is cropped, so the photo always reaches its border.
+                Color.clear
+                    .aspectRatio(aspectRatio, contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: maxHeight * 1.4)
+                    .overlay {
+                        tile(item)
+                    }
+                    .modifier(MediaBorder())
             } else {
                 Grid(horizontalSpacing: Self.spacing, verticalSpacing: Self.spacing) {
                     ForEach(rows, id: \.first?.id) { row in
@@ -45,12 +51,8 @@ package struct MediaGrid: View {
                     }
                 }
                 .frame(height: media.count > 2 ? maxHeight : maxHeight * 0.66)
+                .modifier(MediaBorder())
             }
-        }
-        .clipShape(.rect(cornerRadius: Self.cornerRadius))
-        .overlay {
-            RoundedRectangle(cornerRadius: Self.cornerRadius)
-                .strokeBorder(.twitterMediaBorder, lineWidth: 1 / displayScale)
         }
         .fullScreenCover(isPresented: $isViewerPresented) {
             MediaViewer(media: media, selection: $viewerSelection, tweet: tweet, zoomNamespace: zoomNamespace)
@@ -67,6 +69,20 @@ package struct MediaGrid: View {
             viewerSelection = item.id
             isViewerPresented = true
         }
+    }
+}
+
+/// Twitter's rounded corners and hairline edge, around a lone tile or the whole grid.
+private struct MediaBorder: ViewModifier {
+    @Environment(\.displayScale) private var displayScale
+
+    func body(content: Content) -> some View {
+        content
+            .clipShape(.rect(cornerRadius: MediaGrid.cornerRadius))
+            .overlay {
+                RoundedRectangle(cornerRadius: MediaGrid.cornerRadius)
+                    .strokeBorder(.twitterMediaBorder, lineWidth: 1 / displayScale)
+            }
     }
 }
 

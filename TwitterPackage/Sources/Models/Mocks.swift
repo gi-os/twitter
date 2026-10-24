@@ -223,7 +223,7 @@ extension Tweet {
 
     package static let mockQuotingDeleted: Tweet = {
         var tweet = Tweet.mock(id: "108", author: .mock, text: "Wish I'd screenshotted this one.", secondsAgo: 20_000)
-        tweet.quotedTombstone = Tombstone(id: "108-quote", text: "This post was deleted by the post author.")
+        tweet.quotedTombstone = Tombstone(id: "108-quote", text: "This Tweet was deleted by the Tweet author.")
         return tweet
     }()
 
@@ -247,7 +247,7 @@ extension FeedPage {
                 items: [
                     .tweet(
                         FeedTweet(id: "203", tweet: .mock(id: "203", text: "Late to the party, but this is great."))),
-                    .tombstone(Tombstone(id: "tweet-204", text: "This post is unavailable."))
+                    .tombstone(Tombstone(id: "tweet-204", text: "This Tweet is unavailable."))
                 ],
                 bottomCursor: nil,
                 topCursor: nil
@@ -264,7 +264,7 @@ extension FeedPage {
                     item(focused),
                     .tweet(replies[0]),
                     .tweet(replies[1]),
-                    .tombstone(Tombstone(id: "tweet-209", text: "This post was hidden by the post author.")),
+                    .tombstone(Tombstone(id: "tweet-209", text: "This Tweet was hidden by the Tweet author.")),
                     .showMore(ShowMoreCursor(id: "cursor-showmorethreads-1", cursor: mockShowMoreCursor))
                 ],
                 bottomCursor: nil,
@@ -290,7 +290,7 @@ extension FeedPage {
         var items = Tweet.mocks.map(item)
         items.insert(item(.mockLongPost), at: 1)
         items.insert(item(.mockPoll), at: 2)
-        items.insert(.tombstone(Tombstone(id: "tweet-109", text: "This post was deleted by the post author.")), at: 3)
+        items.insert(.tombstone(Tombstone(id: "tweet-109", text: "This Tweet was deleted by the Tweet author.")), at: 3)
         items += [item(.mockCommunityNote), item(.mockRestricted), item(.mockQuotingDeleted), item(.mockFinalPoll)]
         // `--mock-media`: photos to open in the viewer, kept out of the default set so snapshots stay put.
         if ProcessInfo.processInfo.arguments.contains("--mock-media") {

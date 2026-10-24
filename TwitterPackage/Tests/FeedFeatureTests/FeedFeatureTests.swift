@@ -187,7 +187,7 @@ struct FeedFeatureTests {
         let after = Tweet.mocks[2]
         let reply = Tweet.mocks[1]
         let cursor = ShowMoreCursor(id: "cursor-showmore-1", cursor: "more")
-        let tombstone = Tombstone(id: "tweet-9", text: "This post is unavailable.")
+        let tombstone = Tombstone(id: "tweet-9", text: "This Tweet is unavailable.")
         var state = FeedFeature.State(
             source: .thread(tweetID: focused.id),
             items: [.tweet(FeedTweet(tweet: focused)), .showMore(cursor), .tweet(FeedTweet(tweet: after))]

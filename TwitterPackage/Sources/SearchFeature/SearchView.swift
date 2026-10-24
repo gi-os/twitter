@@ -18,7 +18,7 @@ package struct SearchView: View {
                 ContentUnavailableView(
                     "Search Twitter",
                     systemImage: "magnifyingglass",
-                    description: Text("Find posts, people, and #topics.")
+                    description: Text("Find Tweets, people, and #topics.")
                 )
             }
         }

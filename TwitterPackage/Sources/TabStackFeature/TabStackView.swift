@@ -511,7 +511,7 @@ private struct ComposeToolbarItem: ToolbarContent {
     var body: some ToolbarContent {
         ToolbarItem(placement: .bottomBar) {
             Button(action: compose) {
-                ClassicGlyphLabel("New Post", glyph: .compose)
+                ClassicGlyphLabel("New Tweet", glyph: .compose)
             }
             .buttonStyle(.classicCompose(isExpanded: false))
         }
@@ -759,7 +759,7 @@ private struct TabRootContentView: View {
             ProfileView(store: store)
         case .quotes(let store):
             FeedView(store: store)
-                .navigationTitle("Quotes")
+                .navigationTitle("Quote Tweets")
                 .navigationBarTitleDisplayMode(.inline)
                 .classicTitleBar()
         case .search(let store):
@@ -788,7 +788,7 @@ private struct TabStackPathView: View {
             ProfileView(store: store)
         case .quotes(let store):
             FeedView(store: store)
-                .navigationTitle("Quotes")
+                .navigationTitle("Quote Tweets")
                 .navigationBarTitleDisplayMode(.inline)
                 .classicTitleBar()
         case .search(let store):
@@ -796,7 +796,7 @@ private struct TabStackPathView: View {
                 .classicTitleBar()
         case .thread(let store):
             ThreadView(store: store)
-                .navigationTitle("Post")
+                .navigationTitle("Tweet")
                 .navigationBarTitleDisplayMode(.inline)
                 .classicTitleBar()
         case .userList(let store):

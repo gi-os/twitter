@@ -53,9 +53,9 @@ extension WindowRoute {
     fileprivate var windowTitle: LocalizedStringKey {
         switch self {
         case .profile(let screenName): "@\(screenName)"
-        case .quotes: "Quotes"
+        case .quotes: "Quote Tweets"
         case .search(let query): "Search: \(query)"
-        case .thread: "Post"
+        case .thread: "Tweet"
         case .userList(let source): "\(source.title)"
         case .web(let url): "\(url.host() ?? url.absoluteString)"
         }

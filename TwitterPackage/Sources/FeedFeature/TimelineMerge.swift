@@ -41,7 +41,7 @@ struct TimelineMerge: Equatable {
 
     /// A gap's row: loading its cursor fills in the posts between the fresh page and what was already there.
     static func gap(cursor: String) -> ShowMoreCursor {
-        ShowMoreCursor(id: "\(gapPrefix)\(cursor)", cursor: cursor, label: "Load more posts")
+        ShowMoreCursor(id: "\(gapPrefix)\(cursor)", cursor: cursor, label: "Load more Tweets")
     }
 
     static let gapPrefix = "gap-"

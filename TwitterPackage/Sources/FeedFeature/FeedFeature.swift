@@ -27,6 +27,10 @@ package struct FeedFeature {
         var loadingShowMoreIDs: Set<FeedItem.ID> = []
         /// Posts that arrived above where the reader is, not yet scrolled up to.
         var newPostCount = 0
+        /// The thread a long-pressed post opens to, live in its context menu's preview while the menu is up. Presented
+        /// here rather than in a store of the preview's own so it loads with this feed's dependencies (the mock client
+        /// under `--mock-twitter`, in tests), and so its loading is cancelled when the menu goes away.
+        @Presents var preview: FeedFeature.State?
         /// The item at the top of the screen when scrolling last stopped, to return to when the feed's view is rebuilt
         /// (folding or unfolding the device).
         var lastTopItemID: FeedItem.ID?
@@ -72,6 +76,11 @@ package struct FeedFeature {
         case linkTapped(URL)
         case newPostsButtonTapped
         case pageResponse(Result<FeedPage, any Error>, isRefresh: Bool)
+        indirect case preview(PresentationAction<FeedFeature.Action>)
+        /// A post's context menu preview went away. Identified by post, since the next menu's preview can appear
+        /// before the last one's has gone.
+        case previewHidden(tweetID: Tweet.ID)
+        case previewShown(Tweet)
         case quoteButtonTapped(Tweet)
         case quotesButtonTapped(Tweet)
         case refreshPulled
@@ -214,6 +223,21 @@ package struct FeedFeature {
                 state.errorMessage = error.localizedDescription
                 return .none
 
+            case .preview:
+                // A preview can't be interacted with; nothing it does reaches the columns.
+                return .none
+
+            case .previewHidden(let tweetID):
+                guard state.preview?.source == .thread(tweetID: tweetID) else { return .none }
+                state.preview = nil
+                return .none
+
+            case .previewShown(let tweet):
+                guard state.preview?.source != .thread(tweetID: tweet.id) else { return .none }
+                // Starting from the post itself, as an opened thread does, so it's on screen before the rest loads.
+                state.preview = State(source: .thread(tweetID: tweet.id), items: [.tweet(FeedTweet(tweet: tweet))])
+                return .none
+
             case .quoteButtonTapped(let tweet):
                 return .send(.delegate(.compose(Draft(quoting: tweet))))
 
@@ -312,6 +336,9 @@ package struct FeedFeature {
                 guard state.source != .thread(tweetID: tweet.id) else { return .none }
                 return .send(.delegate(.open(.thread(tweet))))
             }
+        }
+        .ifLet(\.$preview, action: \.preview) {
+            FeedFeature()
         }
     }
 

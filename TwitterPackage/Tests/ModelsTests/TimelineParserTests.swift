@@ -39,9 +39,9 @@ struct TimelineParserTests {
 
         #expect(
             page.items == [
-                .tombstone(Tombstone(id: "tweet-1", text: "This post was deleted by the post author.")),
+                .tombstone(Tombstone(id: "tweet-1", text: "This Tweet was deleted by the Tweet author.")),
                 .tombstone(Tombstone(id: "tweet-2", reason: .suspended)),
-                .tombstone(Tombstone(id: "tombstone-3", text: "This post is unavailable."))
+                .tombstone(Tombstone(id: "tombstone-3", text: "This Tweet is unavailable."))
             ])
     }
 
@@ -56,7 +56,7 @@ struct TimelineParserTests {
         ]
         let tweet = try #require(TimelineParser.tweet(from: result))
         #expect(tweet.quoted.isEmpty)
-        #expect(tweet.quotedTombstone?.text == "This post is unavailable.")
+        #expect(tweet.quotedTombstone?.text == "This Tweet is unavailable.")
     }
 
     @Test

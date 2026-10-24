@@ -184,8 +184,8 @@ package enum TimelineParser {
         if let range = text.range(of: "Learn more", options: [.caseInsensitive, .backwards, .anchored]) {
             text = String(text[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        // Twitter capitalizes "Post" mid-sentence; the app always says "post".
-        text = text.replacingOccurrences(of: #"(?<=\S )Post(s?)\b"#, with: "post$1", options: .regularExpression)
+        // Twitter now says "Post"; the app says "Tweet", capitalized as Twitter always wrote it.
+        text = text.replacingOccurrences(of: #"\b[Pp]ost(s?)\b"#, with: "Tweet$1", options: .regularExpression)
         return text.isEmpty ? Tombstone(id: id, reason: .unavailable) : Tombstone(id: id, text: text)
     }
 

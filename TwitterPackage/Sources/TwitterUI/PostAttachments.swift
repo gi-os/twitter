@@ -105,10 +105,10 @@ extension Tombstone {
     package var displayText: String {
         if let text { return text }
         switch reason {
-        case .suspended: return "This post is from a suspended account."
-        case .protected: return "This post is from an account that limits who can view their posts."
-        case .sensitive: return "This post may contain sensitive content."
-        case .unavailable, nil: return "This post is unavailable."
+        case .suspended: return "This Tweet is from a suspended account."
+        case .protected: return "This Tweet is from an account that limits who can view their Tweets."
+        case .sensitive: return "This Tweet may contain sensitive content."
+        case .unavailable, nil: return "This Tweet is unavailable."
         }
     }
 }

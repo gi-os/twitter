@@ -124,7 +124,7 @@ package struct ReplyRestriction: Hashable, Codable, Sendable {
         case .subscribers:
             return owner.map { "Only \($0)'s subscribers can reply" } ?? "Only subscribers can reply"
         case .other:
-            return prompt ?? "Replies to this post are limited"
+            return prompt ?? "Replies to this Tweet are limited"
         }
     }
 }

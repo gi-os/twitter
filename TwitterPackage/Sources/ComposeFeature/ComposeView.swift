@@ -24,7 +24,7 @@ package struct ComposeView: View {
                     }
 
                     TextField(
-                        store.draft.replyingTo == nil ? "What's happening?" : "Post your reply",
+                        store.draft.replyingTo == nil ? "What's happening?" : "Tweet your reply",
                         text: $store.text,
                         axis: .vertical
                     )
@@ -47,7 +47,7 @@ package struct ComposeView: View {
                 .frame(maxWidth: 680)
                 .frame(maxWidth: .infinity)
             }
-            .navigationTitle(store.draft.replyingTo == nil ? "New Post" : "Reply")
+            .navigationTitle(store.draft.replyingTo == nil ? "New Tweet" : "Reply")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -58,7 +58,7 @@ package struct ComposeView: View {
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Post", systemImage: "paperplane", role: .confirm) {
+                    Button("Tweet", systemImage: "paperplane", role: .confirm) {
                         store.send(.postButtonTapped)
                     }
                     .disabled(!store.canPost)

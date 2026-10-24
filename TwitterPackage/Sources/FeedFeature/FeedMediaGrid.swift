@@ -144,8 +144,8 @@ private struct MediaCell: View {
         }
         .buttonStyle(.plain)
         // A long press previews the whole photo, uncropped; the menu's first action opens the post, as a tap does.
-        .mediaPreview(cell.media, link: cell.link, openTitle: "View Post", open: action)
+        .mediaPreview(cell.media, link: cell.link, openTitle: "View Tweet", open: action)
         .accessibilityLabel(cell.media.altText ?? (cell.media.kind == .photo ? "Image" : "Video"))
-        .accessibilityHint("Opens the post")
+        .accessibilityHint("Opens the Tweet")
     }
 }

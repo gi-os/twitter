@@ -129,13 +129,13 @@ package struct Draft: Equatable {
 }
 
 extension UserListSource {
-    /// The list's title: "Followers" and "Following" as on a profile, "Reposts" and "Likes" as on a post.
+    /// The list's title: "Followers" and "Following" as on a profile, "Retweets" and "Likes" as on a Tweet.
     package var title: String {
         switch self {
         case .followers: "Followers"
         case .following: "Following"
         case .likers: "Likes"
-        case .reposters: "Reposts"
+        case .reposters: "Retweets"
         }
     }
 }
@@ -153,10 +153,10 @@ extension FeedSource {
         case .home(let following): following ? "Following" : "For You"
         case .notifications(let mentionsOnly): mentionsOnly ? "Mentions" : "All"
         case .search(_, let latest): latest ? "Latest" : "Top"
-        case .thread: "Post"
+        case .thread: "Tweet"
         case .userLikes: "Likes"
         case .userMedia: "Media"
-        case .userPosts: "Posts"
+        case .userPosts: "Tweets"
         case .userReplies: "Replies"
         }
     }

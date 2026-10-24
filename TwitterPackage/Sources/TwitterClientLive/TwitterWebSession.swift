@@ -603,7 +603,7 @@ actor TwitterWebSession {
             let id = (unwrapped?["rest_id"] as? String)
                 ?? ((unwrapped?["legacy"] as? [String: Any])?["id_str"] as? String)
         else {
-            throw TwitterError.api("Twitter didn't confirm the post.")
+            throw TwitterError.api("Twitter didn't confirm the Tweet.")
         }
         return id
     }

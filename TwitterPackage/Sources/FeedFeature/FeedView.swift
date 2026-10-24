@@ -52,14 +52,16 @@ package struct FeedView<Header: View>: View {
             position.scrollTo(id: topItemID, anchor: .top)
             store.send(.topItemRestored)
         }
-        .overlay(alignment: .bottom) {
+        // Just under the column's bar (the overlay keeps to the safe area the bar insets), pointing up at where the
+        // new posts are.
+        .overlay(alignment: .top) {
             if store.newPostCount > 0 {
                 NewPostsButton(count: store.newPostCount) {
                     withAnimation(.snappy) { position.scrollTo(edge: .top) }
                     store.send(.newPostsButtonTapped)
                 }
-                .padding(.bottom, 16)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .padding(.top, 8)
+                .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
         .animation(.snappy, value: store.newPostCount > 0)
@@ -74,7 +76,7 @@ private struct NewPostsButton: View {
 
     var body: some View {
         Button(action: action) {
-            Label(count == 1 ? "1 new post" : "\(count) new posts", systemImage: "arrow.up")
+            Label(count == 1 ? "1 new Tweet" : "\(count) new Tweets", systemImage: "arrow.up")
                 .font(.subheadline.weight(.semibold))
                 .padding(.horizontal, 6)
         }
@@ -242,7 +244,7 @@ struct FeedFooter: View {
         Group {
             if let errorMessage = store.errorMessage {
                 ContentUnavailableView {
-                    Label("Couldn't load posts", systemImage: "exclamationmark.bubble")
+                    Label("Couldn't load Tweets", systemImage: "exclamationmark.bubble")
                 } description: {
                     Text(errorMessage)
                 } actions: {

@@ -110,17 +110,17 @@ private struct BlockedProfile: View {
                     ContentUnavailableView {
                         Label("You're blocked", systemImage: "nosign")
                     } description: {
-                        Text("You can't follow or see @\(user.screenName)'s posts.")
+                        Text("You can't follow or see @\(user.screenName)'s Tweets.")
                     }
                 } else {
                     ContentUnavailableView {
                         Label("You blocked @\(user.screenName)", systemImage: "nosign")
                     } description: {
                         Text(
-                            "Are you sure you want to view these posts? Viewing posts won't unblock @\(user.screenName)."
+                            "Are you sure you want to view these Tweets? Viewing Tweets won't unblock @\(user.screenName)."
                         )
                     } actions: {
-                        Button("View Posts") { store.send(.viewPostsButtonTapped) }
+                        Button("View Tweets") { store.send(.viewPostsButtonTapped) }
                             .buttonStyle(.classic)
                     }
                 }

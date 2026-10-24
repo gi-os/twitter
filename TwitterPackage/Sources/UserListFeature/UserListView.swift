@@ -143,7 +143,7 @@ extension UserListSource {
         case .followers: "No followers yet"
         case .following: "Not following anyone yet"
         case .likers: "No likes to show"
-        case .reposters: "No reposts yet"
+        case .reposters: "No Retweets yet"
         }
     }
 }

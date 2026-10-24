@@ -17,7 +17,7 @@ struct PostActivityMenu: View {
                     Button {
                         store.send(.repostsButtonTapped(tweet))
                     } label: {
-                        Label("Reposts", systemImage: "arrow.2.squarepath")
+                        Label("Retweets", systemImage: "arrow.2.squarepath")
                     }
                 }
 
@@ -25,7 +25,7 @@ struct PostActivityMenu: View {
                     Button {
                         store.send(.quotesButtonTapped(tweet))
                     } label: {
-                        Label("Quotes", systemImage: "quote.bubble")
+                        Label("Quote Tweets", systemImage: "quote.bubble")
                     }
                 }
 
@@ -37,7 +37,7 @@ struct PostActivityMenu: View {
                     }
                 }
             } label: {
-                Label("View Post Activity", systemImage: "chart.bar")
+                Label("View Tweet Activity", systemImage: "chart.bar")
             }
         }
     }

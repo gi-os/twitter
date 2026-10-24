@@ -56,7 +56,7 @@ package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
     }
 
     /// What the system reserves along the sidebar (``ReservedRegion/Kind/occlusion``): the camera, and the status bar
-/// beside it.
+    /// beside it.
     @State private var occlusion = SidebarOcclusion()
 
     package var body: some View {
@@ -70,7 +70,7 @@ package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
                 let layout = isExpanded ? AnyLayout(HStackLayout(spacing: 8)) : AnyLayout(VStackLayout(spacing: 12))
                 layout {
                     Button(action: compose) {
-                        ClassicGlyphLabel("New Post", glyph: .compose)
+                        ClassicGlyphLabel("New Tweet", glyph: .compose)
                     }
                     .buttonStyle(ClassicComposeButtonStyle(isExpanded: isExpanded))
 
@@ -104,7 +104,9 @@ package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onGeometryChange(for: SidebarOcclusion.self) { proxy in
             SidebarOcclusion(proxy: proxy)
-        } action: { occlusion = $0 }
+        } action: {
+            occlusion = $0
+        }
         .background {
             ClassicSidebarBackground(contentEdge: edge == .trailing ? .leading : .trailing, castsShadow: isExpanded)
         }
@@ -113,7 +115,7 @@ package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
 }
 
 /// Compose, the one action that matters most: the app's blue button (`btn_following`, as Follow is) with the glyph in
-/// white, the size of a tab; expanded, it says "New Post" beside the glyph and fills the row.
+/// white, the size of a tab; expanded, it says "New Tweet" beside the glyph and fills the row.
 package struct ClassicComposeButtonStyle: ButtonStyle {
     let isExpanded: Bool
 
