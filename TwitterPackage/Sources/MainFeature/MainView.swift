@@ -77,8 +77,9 @@ package struct MainView: View {
             // Laid out for the width they'll have once the sidebar has settled (see `columnStripWidth`), so the columns
             // are placed once rather than chasing the sidebar frame by frame.
             .frame(width: placement.stripWidth)
-            // Widening and narrowing with the sidebar, so a root left alone eases out to its new width.
-            .animation(TabStackView.columnSlide, value: placement.stripWidth)
+            // At its new width at once, under the sidebar sliding over it: the columns inside ease to their places
+            // within it rather than chasing an edge that's still moving (and overshooting under the sidebar).
+            .transaction(value: placement.stripWidth) { $0.animation = nil }
             .environment(\.columnStripWidth, placement.stripWidth)
             // Down past the home indicator, as a tab view is: the tabs keep their own content clear of it. The
             // sidebar keeps clear of it and of the camera itself.
@@ -272,7 +273,12 @@ private struct TabLabel: View {
                         try? await Task.sleep(for: .seconds(2))
                         store.send(.home(.root(.feeds(.delegate(.open(.thread(tweet)))))))
                         try? await Task.sleep(for: .seconds(2))
-                        store.send(.home(.tabReselected))
+                        // `--pop`: close as a pulled-down or thrown-away column does, straight out of the path.
+                        if arguments.contains("--pop"), let id = store.home.path.ids.first {
+                            store.send(.home(.path(.popFrom(id: id))))
+                        } else {
+                            store.send(.home(.tabReselected))
+                        }
                     }
                 }
             }
