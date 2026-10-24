@@ -22,6 +22,7 @@ package struct ThreadView: View {
     @State private var position = ScrollPosition(idType: FeedItem.ID.self)
     @State private var spacerHeight: CGFloat = 0
     @State private var viewportHeight: CGFloat = 0
+    @Environment(\.hasClassicSidebar) private var hasClassicSidebar
     @Environment(\.isFrontmostColumn) private var isFrontmostColumn
 
     package var body: some View {
@@ -78,19 +79,14 @@ package struct ThreadView: View {
         }
         .feedInteractions(store: store)
         .toolbar {
-            if let tweet = store.focusedItemID.flatMap({ store.items[id: $0]?.tweets.first }) {
-                ToolbarItem(placement: .classicSideBar(isFrontmostColumn: isFrontmostColumn)) {
-                    Menu {
-                        TweetMenu(tweet: tweet, engagement: store.engagements.engagement(for: tweet), store: store)
-                    } label: {
-                        ClassicGlyphLabel("More", glyph: .more)
-                    }
-                    .menuStyle(.button)
-                    .buttonStyle(.classicBar(isOnSideBar: isFrontmostColumn))
+            if store.focusedTweet != nil {
+                ClassicColumnMenuToolbarItem(
+                    "More",
+                    isFrontmostColumn: isFrontmostColumn,
+                    hasClassicSidebar: hasClassicSidebar
+                ) {
+                    ThreadMenuItems(store: store)
                 }
-                // In iPhone Duo's side bar where there is one, with the tabs.
-                .axisBehavior(.verticalPreferred)
-                .sharedBackgroundVisibility(.hidden)
             }
         }
     }
@@ -98,6 +94,28 @@ package struct ThreadView: View {
 
 extension ThreadView {
     nonisolated static let coordinateSpace = "thread"
+}
+
+/// A thread's "…" menu: the focused post's.
+package struct ThreadMenuItems: View {
+    let store: StoreOf<FeedFeature>
+
+    package init(store: StoreOf<FeedFeature>) {
+        self.store = store
+    }
+
+    package var body: some View {
+        if let tweet = store.focusedTweet {
+            TweetMenu(tweet: tweet, engagement: store.engagements.engagement(for: tweet), store: store)
+        }
+    }
+}
+
+extension FeedFeature.State {
+    /// The post a thread is about.
+    package var focusedTweet: Tweet? {
+        focusedItemID.flatMap { items[id: $0]?.tweets.first }
+    }
 }
 
 /// Written by the rows and footer as they lay out, read only when the spacer is resized.

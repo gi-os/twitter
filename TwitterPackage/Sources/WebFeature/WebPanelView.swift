@@ -9,6 +9,7 @@ import WebKit
 package struct WebPanelView: View {
     let store: StoreOf<WebFeature>
     @State private var holder = WebPageHolder()
+    @Environment(\.hasClassicSidebar) private var hasClassicSidebar
     @Environment(\.isFrontmostColumn) private var isFrontmostColumn
 
     package init(store: StoreOf<WebFeature>) {
@@ -42,26 +43,14 @@ package struct WebPanelView: View {
                 }
                 .sharedBackgroundVisibility(.hidden)
 
-                ToolbarItem(placement: .classicSideBar(isFrontmostColumn: isFrontmostColumn)) {
-                    Menu {
-                        ShareLink(item: page.url ?? store.url)
-
-                        Button("Open in Safari", systemImage: "safari") {
-                            store.send(.openInSafariButtonTapped)
-                        }
-
-                        Button("Copy Link", systemImage: "link") {
-                            UIPasteboard.general.url = page.url ?? store.url
-                        }
-                    } label: {
-                        ClassicGlyphLabel("Share", glyph: .action)
-                    }
-                    .menuStyle(.button)
-                    .buttonStyle(.classicBar(isOnSideBar: isFrontmostColumn))
+                ClassicColumnMenuToolbarItem(
+                    "Share",
+                    glyph: .action,
+                    isFrontmostColumn: isFrontmostColumn,
+                    hasClassicSidebar: hasClassicSidebar
+                ) {
+                    WebPanelMenuItems(store: store)
                 }
-                // In iPhone Duo's side bar where there is one, with the tabs.
-                .axisBehavior(.verticalPreferred)
-                .sharedBackgroundVisibility(.hidden)
             }
             .task {
                 // Once per page: a pushed panel that reappears keeps where the reader got to.
@@ -73,6 +62,28 @@ package struct WebPanelView: View {
 
     private func reportPage(_ page: WebPage) {
         store.send(.pageChanged(url: page.url, title: page.title))
+    }
+}
+
+/// A web panel's share menu, for the page it's showing now.
+package struct WebPanelMenuItems: View {
+    let store: StoreOf<WebFeature>
+
+    package init(store: StoreOf<WebFeature>) {
+        self.store = store
+    }
+
+    package var body: some View {
+        let url = store.currentURL ?? store.url
+        ShareLink(item: url)
+
+        Button("Open in Safari", systemImage: "safari") {
+            store.send(.openInSafariButtonTapped)
+        }
+
+        Button("Copy Link", systemImage: "link") {
+            UIPasteboard.general.url = url
+        }
     }
 }
 

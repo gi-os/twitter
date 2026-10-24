@@ -491,24 +491,28 @@ struct ColumnLayout: Equatable {
 private struct TabRootView: View {
     let store: StoreOf<TabStack>
     let title: LocalizedStringKey
+    @Environment(\.hasClassicSidebar) private var hasClassicSidebar
 
     var body: some View {
         TabRootContentView(store: store.scope(state: \.root, action: \.root))
             .navigationTitle(title)
             .toolbar {
-                ToolbarItem(placement: .bottomBar) {
-                    Button {
-                        store.send(.composeButtonTapped)
-                    } label: {
-                        ClassicGlyphLabel("New Post", glyph: .compose)
+                // A window's sidebar has its own.
+                if !hasClassicSidebar {
+                    ToolbarItem(placement: .bottomBar) {
+                        Button {
+                            store.send(.composeButtonTapped)
+                        } label: {
+                            ClassicGlyphLabel("New Post", glyph: .compose)
+                        }
+                        .buttonStyle(.classicBar(isOnSideBar: true))
                     }
-                    .buttonStyle(.classicBar(isOnSideBar: true))
+                    .visibilityPriority(.high)
+                    // In iPhone Duo's side bar where there is one, with the tabs.
+                    .axisBehavior(.verticalPreferred)
+                    // A bare glyph, as 4.x's were, rather than a glass disc.
+                    .sharedBackgroundVisibility(.hidden)
                 }
-                .visibilityPriority(.high)
-                // In iPhone Duo's side bar where there is one, with the tabs.
-                .axisBehavior(.verticalPreferred)
-                // A bare glyph, as 4.x's were, rather than a glass disc.
-                .sharedBackgroundVisibility(.hidden)
             }
     }
 }
@@ -571,6 +575,69 @@ private struct TabStackPathView: View {
         case .web(let store):
             WebPanelView(store: store)
                 .classicTitleBar()
+        }
+    }
+}
+
+/// The frontmost column's "…" menu, for a sidebar to carry: the newest column's, or the root's when nothing is open.
+package struct FrontmostColumnMenu: View {
+    let store: StoreOf<TabStack>
+
+    package init(store: StoreOf<TabStack>) {
+        self.store = store
+    }
+
+    package var body: some View {
+        if let id = store.path.ids.last, let columnStore = store.scope(state: \.path[id: id], action: \.path[id: id]) {
+            switch columnStore.case {
+            case .profile(let store):
+                ProfileColumnMenu(store: store)
+            case .thread(let store):
+                ThreadColumnMenu(store: store)
+            case .web(let store):
+                ClassicColumnMenu("Share", glyph: .action, isOnSideBar: true) {
+                    WebPanelMenuItems(store: store)
+                }
+            case .quotes, .search, .userList:
+                EmptyView()
+            }
+        } else {
+            switch store.scope(state: \.root, action: \.root).case {
+            case .profile(let store):
+                ProfileColumnMenu(store: store)
+            case .thread(let store):
+                ThreadColumnMenu(store: store)
+            case .web(let store):
+                ClassicColumnMenu("Share", glyph: .action, isOnSideBar: true) {
+                    WebPanelMenuItems(store: store)
+                }
+            case .feeds, .quotes, .search, .userList:
+                EmptyView()
+            }
+        }
+    }
+}
+
+private struct ProfileColumnMenu: View {
+    let store: StoreOf<ProfileFeature>
+
+    var body: some View {
+        if store.hasMenu {
+            ClassicColumnMenu("Account", isOnSideBar: true) {
+                ProfileMenuItems(store: store)
+            }
+        }
+    }
+}
+
+private struct ThreadColumnMenu: View {
+    let store: StoreOf<FeedFeature>
+
+    var body: some View {
+        if store.focusedTweet != nil {
+            ClassicColumnMenu("More", isOnSideBar: true) {
+                ThreadMenuItems(store: store)
+            }
         }
     }
 }

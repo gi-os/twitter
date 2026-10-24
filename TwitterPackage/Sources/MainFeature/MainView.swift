@@ -11,6 +11,7 @@ package struct MainView: View {
     @Bindable var store: StoreOf<MainFeature>
     /// Per-window, so each main window reopens on the tab it was showing.
     @SceneStorage("selectedTab") private var savedTab = MainFeature.Tab.home
+    @State private var sidebarGeometry = SidebarGeometry()
     #if DEBUG
         @Environment(\.openWindow) private var openWindow
     #endif
@@ -20,40 +21,71 @@ package struct MainView: View {
     }
 
     package var body: some View {
-        TabView(selection: $store.selectedTab) {
-            Tab(value: .home) {
-                TabStackView(store: store.scope(state: \.home, action: \.home), title: "Home")
-            } label: {
-                TabLabel("Home", icon: .home, isSelected: store.selectedTab == .home)
-            }
+        let placement = SidebarPlacement(
+            geometry: sidebarGeometry,
+            isShowingColumns: !tabStack(store.selectedTab).path.isEmpty
+        )
+        HStack(spacing: 0) {
+            // The tabs underneath, their bar hidden for Twitter for iPad's sidebar.
+            TabView(selection: $store.selectedTab) {
+                Tab(value: .home) {
+                    TabStackView(store: tabStack(.home), title: "Home")
+                        .toolbarVisibility(.hidden, for: .tabBar)
+                } label: {
+                    TabLabel("Home", icon: .home, isSelected: store.selectedTab == .home)
+                }
 
-            Tab(value: .notifications) {
-                TabStackView(
-                    store: store.scope(state: \.notifications, action: \.notifications), title: "Notifications")
-            } label: {
-                TabLabel("Notifications", icon: .at, isSelected: store.selectedTab == .notifications)
-            }
+                Tab(value: .notifications) {
+                    TabStackView(store: tabStack(.notifications), title: "Notifications")
+                        .toolbarVisibility(.hidden, for: .tabBar)
+                } label: {
+                    TabLabel("Notifications", icon: .at, isSelected: store.selectedTab == .notifications)
+                }
 
-            Tab(value: .bookmarks) {
-                TabStackView(store: store.scope(state: \.bookmarks, action: \.bookmarks), title: "Bookmarks")
-            } label: {
-                TabLabel("Bookmarks", icon: .bookmark, isSelected: store.selectedTab == .bookmarks)
-            }
+                Tab(value: .bookmarks) {
+                    TabStackView(store: tabStack(.bookmarks), title: "Bookmarks")
+                        .toolbarVisibility(.hidden, for: .tabBar)
+                } label: {
+                    TabLabel("Bookmarks", icon: .bookmark, isSelected: store.selectedTab == .bookmarks)
+                }
 
-            Tab(value: .profile) {
-                TabStackView(store: store.scope(state: \.profile, action: \.profile), title: "Profile")
-            } label: {
-                TabLabel("Profile", icon: .profile, isSelected: store.selectedTab == .profile)
-            }
+                Tab(value: .profile) {
+                    TabStackView(store: tabStack(.profile), title: "Profile")
+                        .toolbarVisibility(.hidden, for: .tabBar)
+                } label: {
+                    TabLabel("Profile", icon: .profile, isSelected: store.selectedTab == .profile)
+                }
 
-            Tab(value: .explore, role: .search) {
-                TabStackView(store: store.scope(state: \.explore, action: \.explore), title: "Explore")
-            } label: {
-                TabLabel("Explore", icon: .hash, isSelected: store.selectedTab == .explore)
+                Tab(value: .explore) {
+                    TabStackView(store: tabStack(.explore), title: "Explore")
+                        .toolbarVisibility(.hidden, for: .tabBar)
+                } label: {
+                    TabLabel("Explore", icon: .hash, isSelected: store.selectedTab == .explore)
+                }
+            }
+            .tabViewStyle(.tabBarOnly)
+            .environment(\.hasClassicSidebar, true)
+
+            // Room of its own, where the system keeps no side bar (the inner display upright, the outer display).
+            if !placement.isInSystemSideBar {
+                sidebar(placement)
+                    .frame(width: placement.width)
             }
         }
-        .tabViewStyle(.sidebarAdaptable)
-        .tabBarMinimizeBehavior(.onScrollDown)
+        // Over the side bar iPhone Duo keeps beside the content, where it has one.
+        .overlay(alignment: .trailing) {
+            if placement.isInSystemSideBar {
+                sidebar(placement)
+                    .frame(width: placement.width)
+                    .ignoresSafeArea()
+            }
+        }
+        .animation(.snappy(duration: 0.28), value: placement)
+        .onGeometryChange(for: SidebarGeometry.self) { proxy in
+            SidebarGeometry(proxy: proxy)
+        } action: { geometry in
+            sidebarGeometry = geometry
+        }
         .sheet(item: $store.scope(state: \.compose, action: \.compose)) { composeStore in
             ComposeView(store: composeStore)
         }
@@ -64,6 +96,77 @@ package struct MainView: View {
             #endif
         }
         .onChange(of: store.selectedTab) { savedTab = store.selectedTab }
+    }
+
+    private func sidebar(_ placement: SidebarPlacement) -> some View {
+        ClassicSidebar(
+            tabs: [
+                ClassicSidebarTab("Home", icon: .home, id: MainFeature.Tab.home),
+                ClassicSidebarTab("Notifications", icon: .at, id: .notifications),
+                ClassicSidebarTab("Bookmarks", icon: .bookmark, id: .bookmarks),
+                ClassicSidebarTab("Profile", icon: .profile, id: .profile),
+                ClassicSidebarTab("Explore", icon: .hash, id: .explore)
+            ],
+            selection: $store.selectedTab,
+            isExpanded: placement.isExpanded,
+            topInset: placement.statusBarHeight,
+            compose: { tabStack(store.selectedTab).send(.composeButtonTapped) },
+            reselect: { tabStack($0).send(.tabReselected) }
+        ) {
+            FrontmostColumnMenu(store: tabStack(store.selectedTab))
+        }
+    }
+
+    private func tabStack(_ tab: MainFeature.Tab) -> StoreOf<TabStack> {
+        switch tab {
+        case .bookmarks: store.scope(state: \.bookmarks, action: \.bookmarks)
+        case .explore: store.scope(state: \.explore, action: \.explore)
+        case .home: store.scope(state: \.home, action: \.home)
+        case .notifications: store.scope(state: \.notifications, action: \.notifications)
+        case .profile: store.scope(state: \.profile, action: \.profile)
+        }
+    }
+}
+
+/// What the sidebar's placement depends on: the window's width, and the side bar iPhone Duo keeps beside the content
+/// in some poses (the trailing safe area).
+private struct SidebarGeometry: Equatable {
+    var systemSideBarWidth: CGFloat = 0
+    var width: CGFloat = 0
+
+    init() {}
+
+    init(proxy: GeometryProxy) {
+        systemSideBarWidth = proxy.safeAreaInsets.trailing
+        width = proxy.size.width
+    }
+}
+
+/// Where the sidebar goes and how wide it is.
+private struct SidebarPlacement: Equatable {
+    /// The narrowest column worth reading beside the expanded sidebar.
+    static let expandingWidth: CGFloat = 400
+    static let collapsedWidth: CGFloat = 72
+    static let expandedWidth: CGFloat = 220
+    /// The status bar at the top of iPhone Duo's side bar.
+    static let systemStatusBarHeight: CGFloat = 150
+
+    var isExpanded = false
+    var isInSystemSideBar = false
+    var statusBarHeight: CGFloat = 0
+    var width: CGFloat = 0
+
+    init(geometry: SidebarGeometry, isShowingColumns: Bool) {
+        if geometry.systemSideBarWidth > 0 {
+            // Inside the system's side bar, at its width, under its status bar.
+            isInSystemSideBar = true
+            statusBarHeight = Self.systemStatusBarHeight
+            width = geometry.systemSideBarWidth
+        } else {
+            // Expanded only beside a lone column on a display with room for it (the inner display upright).
+            isExpanded = !isShowingColumns && geometry.width >= Self.expandingWidth + Self.expandedWidth
+            width = isExpanded ? Self.expandedWidth : Self.collapsedWidth
+        }
     }
 }
 

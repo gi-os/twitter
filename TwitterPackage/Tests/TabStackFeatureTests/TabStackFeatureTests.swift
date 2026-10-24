@@ -12,6 +12,20 @@ import Testing
 @MainActor
 struct TabStackFeatureTests {
     @Test
+    func reselectingTheTabReturnsToTheRoot() async {
+        var state = TabStack.State.home
+        state.path.append(Route.thread(Tweet.mocks[0]).pathState)
+        state.path.append(Route.profile(.mock).pathState)
+        let store = TestStore(initialState: state) {
+            TabStack()
+        }
+
+        await store.send(.tabReselected) {
+            $0.path = StackState()
+        }
+    }
+
+    @Test
     func openingFromRootReplacesPath() async {
         let first = Tweet.mocks[0]
         let second = Tweet.mocks[1]

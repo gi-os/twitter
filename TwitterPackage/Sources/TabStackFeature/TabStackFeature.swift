@@ -78,6 +78,8 @@ package struct TabStack {
         case root(TabRoot.Action)
         case rootColumnPath(StackActionOf<TabStackPath>)
         case safariDismissed
+        /// The tab's button tapped while it's showing: back to the root.
+        case tabReselected
     }
 
     package init() {}
@@ -114,6 +116,10 @@ package struct TabStack {
 
             case .safariDismissed:
                 state.safari = nil
+                return .none
+
+            case .tabReselected:
+                state.path.removeAll()
                 return .none
             }
         }

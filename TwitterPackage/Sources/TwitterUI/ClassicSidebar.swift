@@ -1,0 +1,231 @@
+import SwiftUI
+
+/// A tab in ``ClassicSidebar``.
+package struct ClassicSidebarTab<ID: Hashable>: Identifiable {
+    package let icon: ClassicTabIcon
+    package let id: ID
+    package let title: LocalizedStringKey
+
+    package init(_ title: LocalizedStringKey, icon: ClassicTabIcon, id: ID) {
+        self.icon = icon
+        self.id = id
+        self.title = title
+    }
+}
+
+/// Twitter for iPad's sidebar, standing in for the system tab bar: charcoal (`iPad-sidebarbg`) down the trailing edge,
+/// with compose and the frontmost column's actions at the top and the tabs at the bottom, each in 4.x's own icons on a
+/// dark tile when selected. Collapsed it's a strip of icons; expanded, where there's room beside a lone column, each tab
+/// has its name beside it.
+package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
+    let isExpanded: Bool
+    let tabs: [ClassicSidebarTab<ID>]
+    /// Room left at the top for the status bar, where the system keeps it in the side bar.
+    let topInset: CGFloat
+    @Binding var selection: ID
+    let compose: () -> Void
+    let reselect: (ID) -> Void
+    @ViewBuilder let actions: Actions
+
+    package init(
+        tabs: [ClassicSidebarTab<ID>],
+        selection: Binding<ID>,
+        isExpanded: Bool,
+        topInset: CGFloat = 0,
+        compose: @escaping () -> Void,
+        reselect: @escaping (ID) -> Void,
+        @ViewBuilder actions: () -> Actions
+    ) {
+        self.actions = actions()
+        self.compose = compose
+        self.isExpanded = isExpanded
+        self.reselect = reselect
+        _selection = selection
+        self.tabs = tabs
+        self.topInset = topInset
+    }
+
+    package var body: some View {
+        VStack(spacing: 0) {
+            Color.clear.frame(height: topInset)
+
+            if isExpanded {
+                Image("SidebarBird", bundle: .module)
+                    .accessibilityHidden(true)
+                    .padding(.top, 8)
+                    .padding(.bottom, 12)
+                    .transition(.opacity)
+            }
+
+            // Side by side when expanded, stacked in the strip.
+            let layout = isExpanded ? AnyLayout(HStackLayout(spacing: 8)) : AnyLayout(VStackLayout(spacing: 12))
+            layout {
+                Button(action: compose) {
+                    ClassicGlyphLabel("New Post", glyph: .compose)
+                }
+                .buttonStyle(.classicBar(isOnSideBar: true))
+
+                actions
+            }
+
+            Spacer(minLength: 16)
+
+            VStack(spacing: 6) {
+                ForEach(tabs) { tab in
+                    ClassicSidebarTabButton(
+                        tab: tab,
+                        isExpanded: isExpanded,
+                        isSelected: tab.id == selection
+                    ) {
+                        if tab.id == selection {
+                            reselect(tab.id)
+                        } else {
+                            selection = tab.id
+                        }
+                    }
+                }
+            }
+            .padding(.bottom, 12)
+        }
+        .padding(.horizontal, isExpanded ? 12 : 6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background { ClassicSidebarBackground() }
+        .sensoryFeedback(.selection, trigger: selection)
+    }
+}
+
+private struct ClassicSidebarTabButton<ID: Hashable>: View {
+    let tab: ClassicSidebarTab<ID>
+    let isExpanded: Bool
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                tab.icon.image(isSelected: isSelected)
+                    // 4.x's blue glow pooling under the selected icon.
+                    .background(alignment: .bottom) {
+                        if isSelected {
+                            Image("TabGlow", bundle: .module)
+                                .offset(y: 8)
+                                .accessibilityHidden(true)
+                        }
+                    }
+
+                if isExpanded {
+                    Text(tab.title)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(isSelected ? Color.white : Color(.glyphEmbossedTop))
+                        .shadow(color: .black.opacity(0.8), radius: 0, y: -1)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(.horizontal, isExpanded ? 12 : 0)
+            .frame(maxWidth: isExpanded ? .infinity : 56, minHeight: 50)
+            .background {
+                if isSelected {
+                    // `bg_tab_bar_selected`: a dark tile pressed into the bar.
+                    Image("TabSelected", bundle: .module)
+                        .resizable()
+                        .clipShape(.rect(cornerRadius: 6))
+                        .shadow(color: .white.opacity(0.08), radius: 0, y: 1)
+                }
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(tab.title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+/// `iPad-sidebarbg` with a black edge against the content, casting Twitter for iPad's column shadow onto it.
+private struct ClassicSidebarBackground: View {
+    var body: some View {
+        Image("SidebarBackground", bundle: .module)
+            .resizable()
+            .overlay(alignment: .leading) {
+                Color.black.frame(width: 1)
+            }
+            .overlay(alignment: .leading) {
+                ClassicColumnShadow(edge: .leading)
+            }
+            .ignoresSafeArea()
+            .accessibilityHidden(true)
+    }
+}
+
+extension EnvironmentValues {
+    /// Whether the window's ``ClassicSidebar`` carries the frontmost column's actions (and compose), so that column
+    /// leaves them out of its own bar.
+    @Entry package var hasClassicSidebar = false
+}
+
+/// A column's "…" menu, in 4.x's bar button: on the side bar for the frontmost column, on its own bar otherwise.
+package struct ClassicColumnMenu<Items: View>: View {
+    let glyph: ClassicGlyph
+    let isOnSideBar: Bool
+    let title: LocalizedStringKey
+    @ViewBuilder let items: Items
+
+    package init(
+        _ title: LocalizedStringKey,
+        glyph: ClassicGlyph = .more,
+        isOnSideBar: Bool,
+        @ViewBuilder items: () -> Items
+    ) {
+        self.glyph = glyph
+        self.isOnSideBar = isOnSideBar
+        self.items = items()
+        self.title = title
+    }
+
+    package var body: some View {
+        Menu {
+            items
+        } label: {
+            ClassicGlyphLabel(title, glyph: glyph)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.classicBar(isOnSideBar: isOnSideBar))
+    }
+}
+
+/// A column's "…" menu in its own bar, unless it's the frontmost column of a window whose ``ClassicSidebar`` carries
+/// it instead. In a window without one, the frontmost column's menu goes to iPhone Duo's side bar where there is one.
+package struct ClassicColumnMenuToolbarItem<Items: View>: ToolbarContent {
+    let glyph: ClassicGlyph
+    let hasClassicSidebar: Bool
+    let isFrontmostColumn: Bool
+    let title: LocalizedStringKey
+    let items: Items
+
+    package init(
+        _ title: LocalizedStringKey,
+        glyph: ClassicGlyph = .more,
+        isFrontmostColumn: Bool,
+        hasClassicSidebar: Bool,
+        @ViewBuilder items: () -> Items
+    ) {
+        self.glyph = glyph
+        self.hasClassicSidebar = hasClassicSidebar
+        self.isFrontmostColumn = isFrontmostColumn
+        self.items = items()
+        self.title = title
+    }
+
+    package var body: some ToolbarContent {
+        if !(isFrontmostColumn && hasClassicSidebar) {
+            ToolbarItem(placement: .classicSideBar(isFrontmostColumn: isFrontmostColumn)) {
+                ClassicColumnMenu(title, glyph: glyph, isOnSideBar: isFrontmostColumn) {
+                    items
+                }
+            }
+            .axisBehavior(.verticalPreferred)
+            .sharedBackgroundVisibility(.hidden)
+        }
+    }
+}

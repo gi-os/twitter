@@ -8,6 +8,7 @@ import TwitterUI
 
 package struct ProfileView: View {
     let store: StoreOf<ProfileFeature>
+    @Environment(\.hasClassicSidebar) private var hasClassicSidebar
     @Environment(\.isFrontmostColumn) private var isFrontmostColumn
 
     package init(store: StoreOf<ProfileFeature>) {
@@ -42,47 +43,52 @@ package struct ProfileView: View {
         .navigationTitle(store.user?.name ?? "@\(store.screenName)")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if store.isViewer {
-                // In iPhone Duo's side bar where there is one, with the tabs.
-                ToolbarItem(placement: .classicSideBar(isFrontmostColumn: isFrontmostColumn)) {
-                    Menu {
-                        PostRowStylePicker()
-
-                        Divider()
-
-                        Button("Sign Out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
-                            store.send(.signOutButtonTapped)
-                        }
-                    } label: {
-                        ClassicGlyphLabel("Account", glyph: .more)
-                    }
-                    .menuStyle(.button)
-                    .buttonStyle(.classicBar(isOnSideBar: isFrontmostColumn))
+            if store.hasMenu {
+                ClassicColumnMenuToolbarItem(
+                    "Account",
+                    isFrontmostColumn: isFrontmostColumn,
+                    hasClassicSidebar: hasClassicSidebar
+                ) {
+                    ProfileMenuItems(store: store)
                 }
-                .axisBehavior(.verticalPreferred)
-                .sharedBackgroundVisibility(.hidden)
-            } else if let user = store.user {
-                ToolbarItem(placement: .classicSideBar(isFrontmostColumn: isFrontmostColumn)) {
-                    Menu {
-                        Button(
-                            user.isBlocking ? "Unblock @\(user.screenName)" : "Block @\(user.screenName)",
-                            systemImage: "nosign",
-                            role: user.isBlocking ? nil : .destructive
-                        ) {
-                            store.send(.blockButtonTapped)
-                        }
-                    } label: {
-                        ClassicGlyphLabel("Account", glyph: .more)
-                    }
-                    .menuStyle(.button)
-                    .buttonStyle(.classicBar(isOnSideBar: isFrontmostColumn))
-                }
-                .axisBehavior(.verticalPreferred)
-                .sharedBackgroundVisibility(.hidden)
             }
         }
         .task { store.send(.task) }
     }
+}
+
+/// A profile's "…" menu: the viewer's own account settings, or blocking someone else.
+package struct ProfileMenuItems: View {
+    let store: StoreOf<ProfileFeature>
+
+    package init(store: StoreOf<ProfileFeature>) {
+        self.store = store
+    }
+
+    package var body: some View {
+        if store.isViewer {
+            PostRowStylePicker()
+
+            Divider()
+
+            Button("Sign Out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
+                store.send(.signOutButtonTapped)
+            }
+        } else if let user = store.user {
+            Button(
+                user.isBlocking ? "Unblock @\(user.screenName)" : "Block @\(user.screenName)",
+                systemImage: "nosign",
+                role: user.isBlocking ? nil : .destructive
+            ) {
+                store.send(.blockButtonTapped)
+            }
+        }
+    }
+}
+
+extension ProfileFeature.State {
+    /// Whether ``ProfileMenuItems`` has anything to offer yet.
+    package var hasMenu: Bool { isViewer || user != nil }
 }
 
 /// The header alone, over a notice in place of the posts: someone the viewer blocked, or who blocked the viewer.
