@@ -12,6 +12,16 @@ import Testing
 @MainActor
 struct TabStackFeatureTests {
     @Test
+    func actionsFromAClosedColumnAreDropped() async {
+        let store = TestStore(initialState: TabStack.State.home) {
+            TabStack()
+        }
+
+        // A row of a column that has just been closed, coming into view as it slides away.
+        await store.send(.path(.element(id: 99, action: .thread(.rowAppeared("tweet-1")))))
+    }
+
+    @Test
     func reselectingTheTabReturnsToTheRoot() async {
         var state = TabStack.State.home
         state.path.append(Route.thread(Tweet.mocks[0]).pathState)

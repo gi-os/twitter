@@ -85,45 +85,50 @@ package struct TabStack {
     package init() {}
 
     package var body: some Reducer<State, Action> {
-        Scope(state: \.root, action: \.root) {
-            TabRoot.body
-        }
-        Reduce { state, action in
-            switch action {
-            case .columnAvailabilityChanged(let canShowColumns):
-                state.canShowColumns = canShowColumns
-                return .none
-
-            case .composeButtonTapped:
-                return .send(.delegate(.compose(Draft())))
-
-            case .delegate:
-                return .none
-
-            case .path(.element(let id, let action)):
-                guard let delegate = action.contentDelegate else { return .none }
-                return open(delegate, from: id, state: &state)
-
-            case .path:
-                return .none
-
-            case .root(let action):
-                guard let delegate = action.contentDelegate else { return .none }
-                return open(delegate, from: nil, state: &state)
-
-            case .rootColumnPath:
-                return .none
-
-            case .safariDismissed:
-                state.safari = nil
-                return .none
-
-            case .tabReselected:
-                state.path.removeAll()
-                return .none
+        // A closed column slides or drops off screen after its state is gone, and rows coming into view as it goes
+        // still report in. Those actions are for a column that no longer exists, so they stop here rather than reach
+        // the stack, which would rightly flag them as a logic error anywhere else.
+        IgnoringClosedColumns {
+            Scope(state: \.root, action: \.root) {
+                TabRoot.body
             }
+            Reduce { state, action in
+                switch action {
+                case .columnAvailabilityChanged(let canShowColumns):
+                    state.canShowColumns = canShowColumns
+                    return .none
+
+                case .composeButtonTapped:
+                    return .send(.delegate(.compose(Draft())))
+
+                case .delegate:
+                    return .none
+
+                case .path(.element(let id, let action)):
+                    guard let delegate = action.contentDelegate else { return .none }
+                    return open(delegate, from: id, state: &state)
+
+                case .path:
+                    return .none
+
+                case .root(let action):
+                    guard let delegate = action.contentDelegate else { return .none }
+                    return open(delegate, from: nil, state: &state)
+
+                case .rootColumnPath:
+                    return .none
+
+                case .safariDismissed:
+                    state.safari = nil
+                    return .none
+
+                case .tabReselected:
+                    state.path.removeAll()
+                    return .none
+                }
+            }
+            .forEach(\.path, action: \.path)
         }
-        .forEach(\.path, action: \.path)
     }
 
     /// Like Twitter for iPad's column stack: opening something from a column (`nil` is the root) replaces every column
@@ -278,5 +283,21 @@ extension TabStack.State {
 
     package static func profile(viewer: User) -> Self {
         Self(root: .profile(ProfileFeature.State(user: viewer, isViewer: true)))
+    }
+}
+
+/// Runs `base` for everything but actions from a column that's already closed (see ``TabStack/body``).
+private struct IgnoringClosedColumns<Base: Reducer<TabStack.State, TabStack.Action>>: Reducer {
+    let base: Base
+
+    init(@ReducerBuilder<TabStack.State, TabStack.Action> base: () -> Base) {
+        self.base = base()
+    }
+
+    func reduce(into state: inout TabStack.State, action: TabStack.Action) -> Effect<TabStack.Action> {
+        if case .path(.element(let id, _)) = action, state.path[id: id] == nil {
+            return .none
+        }
+        return base.reduce(into: &state, action: action)
     }
 }
