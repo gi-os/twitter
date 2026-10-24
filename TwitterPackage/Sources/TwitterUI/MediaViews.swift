@@ -99,15 +99,16 @@ private struct MediaTile: View {
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        // Lifted as a rounded photo, as it's previewed, rather than as a square cut out of the grid.
-        .contentShape(.contextMenuPreview, .rect(cornerRadius: MediaGrid.cornerRadius))
-        .mediaPreview(item, link: link, open: open)
-        // The viewer zooms out of, and back into, the tile it's showing.
+        // The viewer zooms out of, and back into, the tile it's showing. Inside the context menu, which hosts what it
+        // wraps in a view of its own: outside it, the zoom finds no source view and falls back to zooming from nowhere.
         .matchedTransitionSource(id: item.id, in: zoomNamespace) { source in
             source.clipShape(
                 RoundedRectangle(cornerRadius: count == 1 ? MediaGrid.cornerRadius : 0)
             )
         }
+        // Lifted as a rounded photo, as it's previewed, rather than as a square cut out of the grid.
+        .contentShape(.contextMenuPreview, .rect(cornerRadius: MediaGrid.cornerRadius))
+        .mediaPreview(item, link: link, open: open)
         .accessibilityLabel(item.altText ?? (item.kind == .photo ? "Image" : "Video"))
         .accessibilityHint("Opens full screen")
     }

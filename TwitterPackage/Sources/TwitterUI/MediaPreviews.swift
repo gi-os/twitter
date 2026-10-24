@@ -188,9 +188,10 @@ private struct LightboxSource: ViewModifier {
                 content.contentShape(shape)
             }
             .buttonStyle(.plain)
+            // Inside the context menu, or the zoom finds no source view (see `MediaTile`).
+            .matchedTransitionSource(id: media.id, in: zoomNamespace) { $0.clipShape(shape) }
             .contentShape(.contextMenuPreview, shape)
             .mediaPreview(media, link: nil, open: open)
-            .matchedTransitionSource(id: media.id, in: zoomNamespace) { $0.clipShape(shape) }
             .fullScreenCover(isPresented: $isPresented) {
                 MediaViewer(media: [media], selection: $selection, tweet: nil, zoomNamespace: zoomNamespace)
             }
