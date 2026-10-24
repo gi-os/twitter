@@ -156,6 +156,9 @@ package struct TweetRow: View {
                 FocusedTimestampLine(date: date, views: tweet.viewCount)
             }
             if isFocused {
+                FocusedStatsLine(tweet: tweet, engagement: engagement, store: store)
+            }
+            if isFocused {
                 DetailEngagementBar(tweet: tweet, engagement: engagement, store: store)
                     // Across the row's full width.
                     .padding(.horizontal, -metrics.sideInset)
@@ -246,6 +249,65 @@ private struct ThreadConnector: View {
             .frame(maxHeight: .infinity)
             .padding(.top, 8)
             .accessibilityHidden(true)
+    }
+}
+
+/// "34 Reposts  2 Quotes  560 Likes" under the focused post, as 4.x's details counted retweets and favorites. Each
+/// opens who reposted, the quotes, or (on your own posts, the only ones whose likes are visible) who liked it.
+private struct FocusedStatsLine: View {
+    let tweet: Tweet
+    let engagement: Engagement
+    let store: StoreOf<FeedFeature>
+    @Environment(\.tweetMetrics) private var metrics
+    @SharedReader(.viewer) private var viewer
+
+    var body: some View {
+        let reposts = engagement.repost.count
+        let likes = engagement.like.count
+        if reposts > 0 || tweet.quoteCount > 0 || likes > 0 {
+            HStack(spacing: 16) {
+                if reposts > 0 {
+                    FocusedStat(count: reposts, label: reposts == 1 ? "Repost" : "Reposts") {
+                        store.send(.repostsButtonTapped(tweet))
+                    }
+                }
+
+                if tweet.quoteCount > 0 {
+                    FocusedStat(count: tweet.quoteCount, label: tweet.quoteCount == 1 ? "Quote" : "Quotes") {
+                        store.send(.quotesButtonTapped(tweet))
+                    }
+                }
+
+                if likes > 0 {
+                    FocusedStat(count: likes, label: likes == 1 ? "Like" : "Likes") {
+                        store.send(.likesButtonTapped(tweet))
+                    }
+                    .disabled(tweet.author.id != viewer?.id)
+                }
+            }
+            .font(metrics.font(.subtext1))
+            .lineLimit(1)
+        }
+    }
+}
+
+private struct FocusedStat: View {
+    let count: Int
+    let label: LocalizedStringKey
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Text(count.compact)
+                    .bold()
+                    .foregroundStyle(.twitterPrimary)
+
+                Text(label)
+                    .foregroundStyle(.twitterSecondary)
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 
