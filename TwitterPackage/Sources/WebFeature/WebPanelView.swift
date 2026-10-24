@@ -10,6 +10,7 @@ package struct WebPanelView: View {
     let store: StoreOf<WebFeature>
     @State private var holder = WebPageHolder()
     @Environment(\.hasClassicSidebar) private var hasClassicSidebar
+    @Environment(\.sidebarCarriesColumnMenu) private var sidebarCarriesColumnMenu
     @Environment(\.isFrontmostColumn) private var isFrontmostColumn
 
     package init(store: StoreOf<WebFeature>) {
@@ -43,13 +44,15 @@ package struct WebPanelView: View {
                 }
                 .sharedBackgroundVisibility(.hidden)
 
-                ClassicColumnMenuToolbarItem(
-                    "Share",
-                    glyph: .action,
-                    isFrontmostColumn: isFrontmostColumn,
-                    hasClassicSidebar: hasClassicSidebar
-                ) {
-                    WebPanelMenuItems(store: store)
+                if !sidebarCarriesColumnMenu {
+                    ClassicColumnMenuToolbarItem(
+                        "Share",
+                        glyph: .action,
+                        isFrontmostColumn: isFrontmostColumn,
+                        hasClassicSidebar: hasClassicSidebar
+                    ) {
+                        WebPanelMenuItems(store: store)
+                    }
                 }
             }
             .task {

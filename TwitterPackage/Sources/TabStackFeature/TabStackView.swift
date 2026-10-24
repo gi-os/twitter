@@ -73,8 +73,13 @@ package struct TabStackView: View {
                         // bar already; a lone stack spans the strip and keeps clear of it.
                         .ignoresSafeArea(.container, edges: layout.showsColumns ? .horizontal : [])
                 } destination: { pathStore in
+                    // Pushed on one stack (the outer display), a screen has no bar of its own: back and its "…" are
+                    // in the sidebar, and only a bar with something in it (a profile's switcher) stays.
                     TabStackPathView(store: pathStore)
                         .classicSideBar()
+                        .toolbarVisibility(.hidden, for: .navigationBar)
+                        .environment(\.classicTitleBarIsBare, true)
+                        .environment(\.sidebarCarriesColumnMenu, true)
                 }
                 .id(layout.canShowColumns)
                 .barStartsAtCardTop(cardMargins != nil)
@@ -104,14 +109,15 @@ package struct TabStackView: View {
                             .barStartsAtCardTop(cardMargins != nil)
                             .frame(width: layout.width(ofColumn: index + 1))
                             .background { ColumnPaper() }
-                            // Pulled down by its bar, it goes, and every column after it follows.
-                            .pulledDownToClose(column: index, pull: $pull) {
-                                popColumns(after: index == 0 ? nil : store.path.ids[index - 1])
-                            }
                             .dimsUnderLeadingEdge(isEnabled: true)
                             .columnCard(isEnabled: cardMargins != nil)
                             // Outside the card, onto the column it lies on.
                             .background(alignment: .leading) { ClassicColumnShadow(edge: .leading) }
+                            // Pulled down by its bar, it goes, and every column after it follows: the whole card,
+                            // corners, bar and shadow, so nothing of it stays behind.
+                            .pulledDownToClose(column: index, pull: $pull) {
+                                popColumns(after: index == 0 ? nil : store.path.ids[index - 1])
+                            }
                             .alreadyHereShake(trigger: store.shake.count, isActive: store.shake.column == id)
                             .staysUnderNextColumn(isEnabled: true)
                             .transition(
@@ -268,6 +274,8 @@ private struct ColumnStrip<Content: View>: View {
             content
         }
         .scrollPosition($position)
+        // Columns pulled past either end go on under the sidebar beside the strip rather than being cut off at it.
+        .scrollClipDisabled()
         .defaultScrollAnchor(layout.showsColumns ? .trailing : nil, for: .initialOffset)
         // A lone stack spans the whole width and keeps its content clear of the side bar and camera itself; insetting
         // the strip too would apply the side bar's inset twice. Columns are laid out within the safe area, so there
@@ -298,15 +306,21 @@ private struct ColumnStrip<Content: View>: View {
             // With the last column gone the root is laid out alone at once, at the start of the strip; sliding there
             // would show it still scrolled aside.
             guard newestColumn != nil else {
-                position.scrollTo(x: 0)
+                // Easing back from wherever the root was left (pulled past the start, say) as it settles into place.
+                withAnimation(ColumnLayout.slide) { position.scrollTo(x: 0) }
                 return
             }
             withAnimation(ColumnLayout.slide) { position.scrollTo(x: layout.offset) }
         }
-        // Folding, unfolding and turning keep the newest column at the trailing edge, without animating. Only what
-        // lays the columns out counts: the margins and corners measured alongside don't move them.
-        .onChange(of: ColumnStripMetrics(width: geometry.width, fold: geometry.fold)) {
-            position.scrollTo(x: layout.offset)
+        // Folding, unfolding and turning keep the newest column at the trailing edge, without animating; the strip
+        // narrowing or widening with the sidebar slides with it. Only what lays the columns out counts: the margins
+        // and corners measured alongside don't move them.
+        .onChange(of: ColumnStripMetrics(width: geometry.width, fold: geometry.fold)) { old, new in
+            if old.fold == new.fold {
+                withAnimation(ColumnLayout.slide) { position.scrollTo(x: layout.offset) }
+            } else {
+                position.scrollTo(x: layout.offset)
+            }
         }
         .onChange(of: closing) {
             guard let closing else { return }
@@ -810,6 +824,38 @@ package struct SidebarBackButton: View {
                 store.send(.path(.popFrom(id: id)))
             }
             .buttonStyle(.classicBar(isOnSideBar: true))
+
+            if let columnStore = store.scope(state: \.path[id: id], action: \.path[id: id]) {
+                SidebarColumnMenu(store: columnStore)
+            }
+        }
+    }
+}
+
+/// The "…" of a screen pushed on one stack, carried by the sidebar since the screen has no bar.
+private struct SidebarColumnMenu: View {
+    let store: StoreOf<TabStackPath>
+
+    var body: some View {
+        switch store.case {
+        case .profile(let store):
+            if store.hasMenu {
+                ClassicColumnMenu("Account", isOnSideBar: true) {
+                    ProfileMenuItems(store: store)
+                }
+            }
+        case .thread(let store):
+            if store.focusedTweet != nil {
+                ClassicColumnMenu("More", isOnSideBar: true) {
+                    ThreadMenuItems(store: store)
+                }
+            }
+        case .web(let store):
+            ClassicColumnMenu("Share", glyph: .action, isOnSideBar: true) {
+                WebPanelMenuItems(store: store)
+            }
+        case .quotes, .search, .userList:
+            EmptyView()
         }
     }
 }

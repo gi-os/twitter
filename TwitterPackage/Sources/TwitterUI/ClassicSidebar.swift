@@ -55,10 +55,16 @@ package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
         self.centerOffset = centerOffset
     }
 
+    /// What the system reserves along the sidebar (``ReservedRegion/Kind/occlusion``): the camera, and the status bar
+/// beside it.
+    @State private var occlusion = SidebarOcclusion()
+
     package var body: some View {
         VStack(spacing: 0) {
             if let compose {
-                Color.clear.frame(height: topInset)
+                // Below what the system reserves at the top (the camera and status bar), or the status bar's usual height
+                // where nothing is reserved.
+                Color.clear.frame(height: max(occlusion.top, topInset))
 
                 // Side by side when expanded, stacked in the strip, a little below the top.
                 let layout = isExpanded ? AnyLayout(HStackLayout(spacing: 8)) : AnyLayout(VStackLayout(spacing: 12))
@@ -90,12 +96,15 @@ package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
                     }
                 }
             }
-            .padding(.bottom, 12)
+            .padding(.bottom, 12 + occlusion.bottom)
         }
         // A negative offset moves the content toward the leading edge.
         .padding(.leading, (isExpanded ? 12 : 6) + max(centerOffset, 0) * 2)
         .padding(.trailing, (isExpanded ? 12 : 6) + max(-centerOffset, 0) * 2)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onGeometryChange(for: SidebarOcclusion.self) { proxy in
+            SidebarOcclusion(proxy: proxy)
+        } action: { occlusion = $0 }
         .background {
             ClassicSidebarBackground(contentEdge: edge == .trailing ? .leading : .trailing, castsShadow: isExpanded)
         }
@@ -297,5 +306,25 @@ package struct ClassicColumnButtons<Content: View>: View {
             content
         }
         .padding(.trailing, -ClassicChrome.barButtonOutset)
+    }
+}
+
+/// How far the display's occlusions (the camera) reach into the sidebar from its top and bottom.
+private struct SidebarOcclusion: Equatable {
+    var bottom: CGFloat = 0
+    var top: CGFloat = 0
+
+    init() {}
+
+    init(proxy: GeometryProxy) {
+        let height = proxy.size.height
+        // Anywhere along the sidebar's edge of the window: the region may sit past a collapsed sidebar's narrow frame.
+        for region in proxy.reservedRegions(kind: .occlusion) {
+            if region.frame.midY < height / 2 {
+                top = max(top, region.frame.maxY + region.margins.bottom)
+            } else {
+                bottom = max(bottom, height - region.frame.minY + region.margins.top)
+            }
+        }
     }
 }

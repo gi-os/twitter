@@ -9,6 +9,7 @@ import TwitterUI
 package struct ProfileView: View {
     let store: StoreOf<ProfileFeature>
     @Environment(\.hasClassicSidebar) private var hasClassicSidebar
+    @Environment(\.sidebarCarriesColumnMenu) private var sidebarCarriesColumnMenu
     @Environment(\.isFrontmostColumn) private var isFrontmostColumn
 
     package init(store: StoreOf<ProfileFeature>) {
@@ -44,12 +45,14 @@ package struct ProfileView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if store.hasMenu {
-                ClassicColumnMenuToolbarItem(
-                    "Account",
-                    isFrontmostColumn: isFrontmostColumn,
-                    hasClassicSidebar: hasClassicSidebar
-                ) {
-                    ProfileMenuItems(store: store)
+                if !sidebarCarriesColumnMenu {
+                    ClassicColumnMenuToolbarItem(
+                        "Account",
+                        isFrontmostColumn: isFrontmostColumn,
+                        hasClassicSidebar: hasClassicSidebar
+                    ) {
+                        ProfileMenuItems(store: store)
+                    }
                 }
             }
         }

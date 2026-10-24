@@ -16,7 +16,7 @@ extension View {
 
     /// Twitter for iPad's column bar behind the navigation bar.
     package func classicTitleBar() -> some View {
-        classicTitleBar { Color.clear.frame(height: 0) }
+        classicTitleBar { EmptyBarContent() }
     }
 
     /// Twitter 4.x's tab bar turned on its side, filling the leading and trailing safe areas: where iPhone Duo's side
@@ -36,12 +36,17 @@ private struct ClassicTitleBar<Bar: View>: ViewModifier {
     let bar: Bar
     @Environment(\.classicBarContentTop) private var contentTop
 
+    @Environment(\.classicTitleBarIsBare) private var isBare
+
     func body(content: Content) -> some View {
         content
             .safeAreaBar(edge: .top) {
                 bar
                     .frame(maxWidth: .infinity)
+                    // Bare, a bar with nothing in it isn't drawn at all; a switcher keeps a strip of bar of its own.
+                    .padding(.top, isBare ? 8 : 0)
                     .background { ClassicColumnBarBackdrop() }
+                    .opacity(isBare && Bar.self == EmptyBarContent.self ? 0 : 1)
             }
             // The bar is opaque: content stops at it instead of fading beneath.
             .scrollEdgeEffectHidden(true, for: .top)
@@ -52,7 +57,21 @@ private struct ClassicTitleBar<Bar: View>: ViewModifier {
     }
 }
 
+/// A column bar with nothing in it, beneath the navigation bar.
+package struct EmptyBarContent: View {
+    package var body: some View {
+        Color.clear.frame(height: 0)
+    }
+}
+
 extension EnvironmentValues {
+    /// Whether column bars stand alone, with no navigation bar above them (a screen pushed on one stack): an empty
+    /// one isn't drawn, and one with content draws just a strip around it.
+    @Entry package var classicTitleBarIsBare = false
+
+    /// Whether the window's sidebar carries the screen's "…" menu, so the screen leaves it out of its own bar.
+    @Entry package var sidebarCarriesColumnMenu = false
+
     /// How far below a column's top its content starts, when the column sizes its own bar rather than leaving it to
     /// the system's navigation bar.
     @Entry package var classicBarContentTop: CGFloat? = nil
