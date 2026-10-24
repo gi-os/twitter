@@ -75,6 +75,7 @@ package struct TabStackView: View {
                 // The root reflows once, at its new width, rather than on every frame of the new column sliding in.
                 .transaction(value: layout.showsColumns) { $0.animation = nil }
                 .dimsUnderLeadingEdge(isEnabled: layout.showsColumns)
+                .columnCard(isEnabled: layout.showsCards)
                 // Alone on the backdrop, the root casts onto it; opened columns cover this as they slide over.
                 .overlay(alignment: .trailing) {
                     if layout.showsColumns { ClassicColumnShadow(edge: .trailing) }
@@ -93,6 +94,9 @@ package struct TabStackView: View {
                             .frame(width: layout.width(ofColumn: index + 1))
                             .background { ColumnPaper() }
                             .dimsUnderLeadingEdge(isEnabled: true)
+                            .columnCard(isEnabled: layout.showsCards)
+                            // Outside the card, onto the column it lies on.
+                            .background(alignment: .leading) { ClassicColumnShadow(edge: .leading) }
                             .alreadyHereShake(trigger: store.shake.count, isActive: store.shake.column == id)
                             .transition(
                                 .asymmetric(
@@ -295,12 +299,11 @@ private struct AlreadyHereShake: ViewModifier {
     }
 }
 
-/// A column's sheet of paper: opaque, casting onto the column it lies on from its leading edge.
+/// A column's sheet of paper: opaque.
 private struct ColumnPaper: View {
     var body: some View {
         Rectangle()
             .fill(.background)
-            .overlay(alignment: .leading) { ClassicColumnShadow(edge: .leading) }
             // Up under the bars, but never sideways into the side bar.
             .ignoresSafeArea(edges: .vertical)
     }
@@ -340,6 +343,13 @@ extension View {
 
     /// Darkens a column by how far it has slid under the leading edge, from where it's drawn: no state, no layout, and
     /// a plain black layer fading rather than a filter over the column's content.
+    /// Twitter for iPad's columns as cards on the backdrop: dropped a little from the top, with rounded top corners.
+    fileprivate func columnCard(isEnabled: Bool) -> some View {
+        let radius: CGFloat = isEnabled ? 8 : 0
+        return clipShape(UnevenRoundedRectangle(topLeadingRadius: radius, topTrailingRadius: radius))
+            .padding(.top, isEnabled ? 10 : 0)
+    }
+
     fileprivate func dimsUnderLeadingEdge(isEnabled: Bool) -> some View {
         overlay {
             if isEnabled {
@@ -403,6 +413,9 @@ struct ColumnLayout: Equatable {
     var isScrollable = false
     /// Across a fold the strip only comes to rest with a column on each side of it, the way a book lies open.
     private var isFolded = false
+
+    /// On a flat display, with backdrop around them, columns are cards: across a fold they're pages, edge to edge.
+    var showsCards: Bool { showsColumns && !isFolded }
     /// How far the strip of columns is shifted left so the newest one ends at the trailing edge.
     var offset: CGFloat = 0
     /// The width of the root and of each opened column, while columns are shown.
