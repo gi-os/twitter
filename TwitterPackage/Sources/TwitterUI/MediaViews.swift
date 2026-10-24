@@ -134,6 +134,10 @@ package struct MediaViewer: View {
     /// The timeline's link handling, inherited from the post this viewer was opened from.
     @Environment(\.openURL) private var openURL
 
+    private var zoomSourceID: Media.ID {
+        selection ?? lastSelection ?? media.first?.id ?? ""
+    }
+
     package init(media: [Media], selection: Binding<Media.ID?>, tweet: Tweet?, zoomNamespace: Namespace.ID) {
         self.media = media
         _selection = selection
@@ -192,7 +196,9 @@ package struct MediaViewer: View {
         .persistentSystemOverlays(showsChrome ? .automatic : .hidden)
         // A zoomed photo pans instead of starting the swipe-down dismissal.
         .interactiveDismissDisabled(isZoomed)
-        .navigationTransition(.zoom(sourceID: selection ?? lastSelection ?? media.first?.id, in: zoomNamespace))
+        // A plain ID, as the tiles mark themselves: an optional one never matches theirs, and the zoom falls back to
+        // growing out of nowhere.
+        .navigationTransition(.zoom(sourceID: zoomSourceID, in: zoomNamespace))
         .onChange(of: selection, initial: true) {
             if let selection { lastSelection = selection }
         }
