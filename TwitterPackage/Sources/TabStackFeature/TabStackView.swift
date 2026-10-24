@@ -92,6 +92,7 @@ package struct TabStackView: View {
                 .alreadyHereShake(
                     trigger: store.shake.count, isActive: !layout.showsColumns || store.shake.column == nil
                 )
+                .staysUnderNextColumn(isEnabled: layout.showsColumns)
 
                 if layout.showsColumns {
                     ForEach(Array(store.path.ids.enumerated()), id: \.element) { index, id in
@@ -113,6 +114,7 @@ package struct TabStackView: View {
                             // Outside the card, onto the column it lies on.
                             .background(alignment: .leading) { ClassicColumnShadow(edge: .leading) }
                             .alreadyHereShake(trigger: store.shake.count, isActive: store.shake.column == id)
+                            .staysUnderNextColumn(isEnabled: true)
                             .transition(
                                 .asymmetric(
                                     insertion: .offset(
@@ -530,6 +532,16 @@ extension View {
         modifier(ColumnCard(isEnabled: isEnabled))
     }
 
+    /// Keeps a column where it lies once the strip has slid it to the leading edge, so the column after it slides over
+    /// it like a card dealt onto another, rather than pushing it away. Drawn from the column's own position, like the
+    /// dimming: no state and no layout.
+    fileprivate func staysUnderNextColumn(isEnabled: Bool) -> some View {
+        visualEffect { content, proxy in
+            let minX = proxy.frame(in: .scrollView(axis: .horizontal)).minX
+            return content.offset(x: isEnabled ? max(-minX, 0) : 0)
+        }
+    }
+
     fileprivate func dimsUnderLeadingEdge(isEnabled: Bool) -> some View {
         overlay {
             if isEnabled {
@@ -638,13 +650,17 @@ struct ColumnLayout: Equatable {
             offset = max(minX(ofColumn: widths.count - 1) + widths[widths.count - 1] - width, 0)
             return
         }
+        let rootWidth: CGFloat
         if width >= 2 * Self.minimumColumnWidth {
             columnWidth = (width / 2).rounded(.down)
+            rootWidth = columnWidth
         } else {
+            // Room for one column at a time: the root keeps the whole width, and what opens slides over it.
             columnWidth = min(Self.preferredColumnWidth, width)
+            rootWidth = width
         }
         let wideWidth = max(columnWidth, width - Self.webPanelPeek)
-        widths = [columnWidth] + wideColumns.map { $0 ? wideWidth : columnWidth }
+        widths = [rootWidth] + wideColumns.map { $0 ? wideWidth : columnWidth }
         let stripWidth = widths.reduce(0, +)
         offset = max(stripWidth - width, 0)
         if wideColumns.isEmpty {

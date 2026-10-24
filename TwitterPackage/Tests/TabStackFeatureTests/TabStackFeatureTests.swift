@@ -290,9 +290,9 @@ struct ColumnLayoutTests {
         geometry.width = 669
         let layout = ColumnLayout(geometry: geometry, depth: 1)
         #expect(layout.columnWidth == ColumnLayout.preferredColumnWidth)
-        #expect(geometry.width - layout.columnWidth > 0)
-        let overflow: CGFloat = 2 * layout.columnWidth - geometry.width
-        #expect(layout.offset == overflow)
+        // The root keeps the whole width; the column slides over all but a sliver of it.
+        #expect(layout.width(ofColumn: 0) == geometry.width)
+        #expect(layout.offset == layout.columnWidth)
         #expect(layout.isCovered(column: 0))
         #expect(!layout.isCovered(column: 1))
     }
@@ -352,8 +352,8 @@ struct ColumnLayoutTests {
         geometry.width = 669
         let layout = ColumnLayout(geometry: geometry, depth: 2)
         // Root at the leading edge, the first column at either edge, the newest at the trailing edge.
-        #expect(layout.snapOffsets == [0, 283, 476, 759])
-        #expect(layout.offset == 759)
+        #expect(layout.snapOffsets == [0, 476, 669, 952])
+        #expect(layout.offset == 952)
     }
 
     @Test
