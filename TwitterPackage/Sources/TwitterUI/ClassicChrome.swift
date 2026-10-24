@@ -11,13 +11,7 @@ extension View {
     /// Twitter for iPad's column bar behind the navigation bar, with `bar` (a feed switcher, say) on it beneath the
     /// title.
     package func classicTitleBar(@ViewBuilder bar: () -> some View) -> some View {
-        safeAreaBar(edge: .top) {
-            bar()
-                .frame(maxWidth: .infinity)
-                .background { ClassicColumnBarBackdrop() }
-        }
-        // The bar is opaque: content stops at it instead of fading beneath.
-        .scrollEdgeEffectHidden(true, for: .top)
+        modifier(ClassicTitleBar(bar: bar()))
     }
 
     /// Twitter for iPad's column bar behind the navigation bar.
@@ -36,6 +30,32 @@ extension View {
     package func classicTabBar() -> some View {
         background { DarkTabBarChrome().frame(width: 0, height: 0) }
     }
+}
+
+private struct ClassicTitleBar<Bar: View>: ViewModifier {
+    let bar: Bar
+    @Environment(\.classicBarContentTop) private var contentTop
+
+    func body(content: Content) -> some View {
+        content
+            .safeAreaBar(edge: .top) {
+                bar
+                    .frame(maxWidth: .infinity)
+                    .background { ClassicColumnBarBackdrop() }
+            }
+            // The bar is opaque: content stops at it instead of fading beneath.
+            .scrollEdgeEffectHidden(true, for: .top)
+            // Where the column says where its bar ends, content starts there rather than below the system's taller
+            // navigation bar.
+            .safeAreaPadding(.top, contentTop ?? 0)
+            .ignoresSafeArea(.container, edges: contentTop != nil ? .top : [])
+    }
+}
+
+extension EnvironmentValues {
+    /// How far below a column's top its content starts, when the column sizes its own bar rather than leaving it to
+    /// the system's navigation bar.
+    @Entry package var classicBarContentTop: CGFloat? = nil
 }
 
 package enum ClassicChrome {

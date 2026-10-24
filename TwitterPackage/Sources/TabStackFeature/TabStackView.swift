@@ -519,9 +519,8 @@ private struct ComposeToolbarItem: ToolbarContent {
 extension View {
     /// The space UIKit leaves above a navigation bar in a view with no top safe area (iOS 27).
     fileprivate static var navigationBarTopSpacing: CGFloat { 24 }
-    /// The room iOS 27's bar leaves under its items beyond what it leaves above them; lifting by this much less than
-    /// the spacing above centres the items between the card's top edge and the bar's bottom.
-    fileprivate static var navigationBarItemImbalance: CGFloat { 10 }
+    /// A card's bar: the system's items, 30pt tall and 9pt below the bar's top, with as much again below them.
+    fileprivate static var cardBarHeight: CGFloat { 48 }
 
     /// Twitter's gentle "no": a short shake when asked to open what's already showing.
     fileprivate func alreadyHereShake(trigger: Int, isActive: Bool) -> some View {
@@ -536,11 +535,14 @@ extension View {
         modifier(PullDownToClose(column: column, pull: pull, close: close))
     }
 
-    /// Lifts a card's navigation stack by most of the spacing UIKit leaves above a navigation bar whose view has no
-    /// top safe area, so the bar's items sit centred in a shorter chrome; the card's mask hides the band above it. UIKit
+    /// Lifts a card's navigation stack by the spacing UIKit leaves above a navigation bar whose view has no top safe
+    /// area, so the bar starts at the card's top edge (the card's mask hides the band above it), and ends its bar just
+    /// below the system's items. UIKit
     /// decides both the bar's height and that spacing itself, and nothing public moves either.
     fileprivate func barStartsAtCardTop(_ isEnabled: Bool) -> some View {
-        padding(.top, isEnabled ? -(Self.navigationBarTopSpacing - Self.navigationBarItemImbalance) : 0)
+        padding(.top, isEnabled ? -Self.navigationBarTopSpacing : 0)
+            // Content starts below the card's own, shorter bar rather than the system's.
+            .environment(\.classicBarContentTop, isEnabled ? Self.navigationBarTopSpacing + Self.cardBarHeight : nil)
     }
 
     /// Twitter for iPad's columns as cards on the backdrop: dropped a little from the top, with rounded top corners.
