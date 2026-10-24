@@ -86,6 +86,9 @@ package struct TabStackView: View {
                 .containerRelativeFrame(.horizontal) { width, _ in
                     layout.showsColumns ? layout.width(ofColumn: 0) : width
                 }
+                // Where columns are possible, an explicit width, which animates as columns come and go; the container
+                // relative frame alone would jump straight to its new size.
+                .frame(width: layout.canShowColumns ? layout.rootWidth : nil)
                 .dimsUnderLeadingEdge(isEnabled: layout.showsColumns)
                 .columnCard(isEnabled: cardMargins != nil)
                 // Alone on the backdrop, the root casts onto it; opened columns cover this as they slide over.
@@ -96,7 +99,9 @@ package struct TabStackView: View {
                 .alreadyHereShake(
                     trigger: store.shake.count, isActive: !layout.showsColumns || store.shake.column == nil
                 )
-                .staysUnderNextColumn(isEnabled: layout.showsColumns)
+                // Held at the leading edge whenever columns are possible, not only while they're shown: as the last one
+                // goes the strip settles back to its start, and the root stays put rather than riding in from the left.
+                .staysUnderNextColumn(isEnabled: layout.canShowColumns)
 
                 if layout.showsColumns {
                     ForEach(Array(store.path.ids.enumerated()), id: \.element) { index, id in
@@ -156,6 +161,9 @@ package struct TabStackView: View {
         .classicTabBar()
         .onChange(of: store.closeAllColumnsRequests) {
             requestClose(after: nil)
+        }
+        .onChange(of: store.path.ids) {
+            pull = nil
         }
         .onChange(of: store.path.count) {
             shownDepth = store.path.count
@@ -228,7 +236,9 @@ package struct TabStackView: View {
         let ids = store.path.ids
         let firstRemoved = id.flatMap { ids.firstIndex(of: $0) }.map { $0 + 1 } ?? 0
         guard firstRemoved < ids.count else { return }
-        store.send(.path(.popFrom(id: ids[firstRemoved])))
+        // In one animated transaction, so everything that follows from the columns going (the root's width
+        // and place, the sidebar opening out) moves together.
+        store.send(.path(.popFrom(id: ids[firstRemoved])), animation: ColumnLayout.slide)
     }
 
     private var path:
@@ -268,6 +278,8 @@ private struct ColumnStrip<Content: View>: View {
     @State private var position = ScrollPosition()
     /// Whether the strip is pulled far enough past its start that letting go throws the opened columns away.
     @State private var isPastThrowDistance = false
+    /// Whether the strip is pulled past its start at all (its root slid right of where it rests).
+    @State private var isPulledPastStart = false
 
     var body: some View {
         ScrollView(.horizontal) {
@@ -292,6 +304,11 @@ private struct ColumnStrip<Content: View>: View {
         } action: { _, isPast in
             isPastThrowDistance = isPast
         }
+        .onScrollGeometryChange(for: Bool.self) { scroll in
+            scroll.contentOffset.x + scroll.contentInsets.leading < -0.5
+        } action: { _, isPulled in
+            isPulledPastStart = isPulled
+        }
         .onScrollPhaseChange { oldPhase, newPhase in
             if oldPhase == .interacting, newPhase != .interacting, isPastThrowDistance {
                 throwAway()
@@ -306,8 +323,13 @@ private struct ColumnStrip<Content: View>: View {
             // With the last column gone the root is laid out alone at once, at the start of the strip; sliding there
             // would show it still scrolled aside.
             guard newestColumn != nil else {
-                // Easing back from wherever the root was left (pulled past the start, say) as it settles into place.
-                withAnimation(ColumnLayout.slide) { position.scrollTo(x: 0) }
+                // Pulled past the start, the root eases back from where it was left. Otherwise it's already where it
+                // rests, held at the leading edge under the columns, and moving the strip there at once keeps it put.
+                if isPulledPastStart {
+                    withAnimation(ColumnLayout.slide) { position.scrollTo(x: 0) }
+                } else {
+                    position.scrollTo(x: 0)
+                }
                 return
             }
             withAnimation(ColumnLayout.slide) { position.scrollTo(x: layout.offset) }
@@ -316,7 +338,8 @@ private struct ColumnStrip<Content: View>: View {
         // narrowing or widening with the sidebar slides with it. Only what lays the columns out counts: the margins
         // and corners measured alongside don't move them.
         .onChange(of: ColumnStripMetrics(width: geometry.width, fold: geometry.fold)) { old, new in
-            if old.fold == new.fold {
+            // A lone root rests at the start; only columns ride the strip as it resizes.
+            if old.fold == new.fold, newestColumn != nil {
                 withAnimation(ColumnLayout.slide) { position.scrollTo(x: layout.offset) }
             } else {
                 position.scrollTo(x: layout.offset)
@@ -432,8 +455,9 @@ private struct PullDownToClose: ViewModifier {
                             withAnimation(.snappy(duration: 0.25)) {
                                 pull?.offset = 1_500
                             } completion: {
+                                // Left where it dropped, off screen: the stack lets go of the pull once the columns
+                                // are gone, so nothing springs back into view while they leave.
                                 close()
-                                pull = nil
                             }
                         } else {
                             withAnimation(.snappy) {
@@ -689,6 +713,11 @@ struct ColumnLayout: Equatable {
         if wideColumns.isEmpty {
             leadingInset = ((width - columnWidth) / 2).rounded(.down)
         }
+    }
+
+    /// The root's width: its column's while columns are shown, otherwise all of the strip.
+    var rootWidth: CGFloat {
+        showsColumns ? width(ofColumn: 0) : containerWidth
     }
 
     func width(ofColumn column: Int) -> CGFloat {
