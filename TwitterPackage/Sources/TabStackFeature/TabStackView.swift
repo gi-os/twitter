@@ -111,6 +111,7 @@ package struct TabStackView: View {
         }
         .background {
             if layout.canShowColumns { ColumnBackdrop() }
+
             // Where columns leave the side bar's area uncovered.
             Color.clear.classicSideBar()
         }

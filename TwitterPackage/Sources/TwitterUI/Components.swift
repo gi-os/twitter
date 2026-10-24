@@ -70,11 +70,13 @@ package struct AuthorLine: View {
                 HStack(spacing: metrics.authorLineSpacing) {
                     nameAndBadges
                         .layoutPriority(1)
+
                     handleAndTime
                 }
             case .stacked:
                 VStack(alignment: .leading, spacing: metrics.stackedAuthorSpacing) {
                     nameAndBadges
+
                     handleAndTime
                 }
             }
@@ -90,10 +92,12 @@ package struct AuthorLine: View {
                 .font(metrics.font(.body, weight: .bold))
                 .foregroundStyle(.twitterPrimary)
                 .lineLimit(1)
+
             if let badge {
                 VerificationBadgeView(badge: badge)
                     .imageScale(.small)
             }
+
             if let affiliate {
                 AffiliateBadge(label: affiliate, size: 14)
             }
@@ -104,8 +108,10 @@ package struct AuthorLine: View {
         HStack(spacing: metrics.authorLineSpacing) {
             Text(verbatim: "@\(screenName)")
                 .lineLimit(1)
+
             if let date {
                 Text(verbatim: "·")
+
                 Text(date.shortRelative)
                     .fixedSize()
             }
@@ -264,6 +270,7 @@ package struct EngagementLabel: View {
         let verticalSlack = (EngagementLabel.hitHeight - EngagementLabel.height) / 2
         HStack(spacing: 4) {
             TwitterIconView(icon)
+
             if let count, count > 0 {
                 Text(count.compact)
                     // A count never wraps mid-number; the bar's flexible gaps give way instead.

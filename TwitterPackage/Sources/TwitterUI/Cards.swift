@@ -18,8 +18,10 @@ package struct QuoteCard: View {
             VStack(alignment: .leading, spacing: 4 * unit) {
                 HStack(spacing: 4 * unit) {
                     Avatar(user: tweet.author, size: metrics.quoteAvatarSize)
+
                     AuthorLine(user: tweet.author, date: tweet.createdAt)
                 }
+
                 if !tweet.text.isEmpty {
                     // `ios_ui_quoted_tweet_custom_max_text_lines`.
                     // The card is one button: its text is styled like a post's, but taps open the quoted post.
@@ -28,6 +30,7 @@ package struct QuoteCard: View {
                         .environment(\.postTextPreviewsEnabled, false)
                         .allowsHitTesting(false)
                 }
+
                 if !tweet.media.isEmpty {
                     MediaGrid(media: tweet.media, maxHeight: 180, tweet: tweet)
                         .padding(.top, 4 * unit)
@@ -72,10 +75,12 @@ package struct LinkCardView: View {
                         .frame(height: 160)
                         .clipped()
                 }
+
                 VStack(alignment: .leading, spacing: 2) {
                     Text(card.domain)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+
                     Text(card.title)
                         .font(.subheadline)
                         .lineLimit(2)
@@ -99,6 +104,7 @@ package struct LinkCardView: View {
             } label: {
                 Label("Open Link", systemImage: "arrow.up.right.square")
             }
+
             if supportsMultipleWindows, let route = Route.forLink(card.url) {
                 Button {
                     openWindow(value: route.window)
@@ -106,17 +112,21 @@ package struct LinkCardView: View {
                     Label("Open in New Window", systemImage: "macwindow.badge.plus")
                 }
             }
+
             Button {
                 UIApplication.shared.open(card.url)
             } label: {
                 Label("Open in Safari", systemImage: "safari")
             }
+
             Divider()
+
             Button {
                 UIPasteboard.general.url = card.url
             } label: {
                 Label("Copy Link", systemImage: "link")
             }
+
             ShareLink(item: card.url)
         }
     }

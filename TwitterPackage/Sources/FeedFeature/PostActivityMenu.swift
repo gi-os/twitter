@@ -20,6 +20,7 @@ struct PostActivityMenu: View {
                         Label("Reposts", systemImage: "arrow.2.squarepath")
                     }
                 }
+
                 if tweet.quoteCount > 0 {
                     Button {
                         store.send(.quotesButtonTapped(tweet))
@@ -27,6 +28,7 @@ struct PostActivityMenu: View {
                         Label("Quotes", systemImage: "quote.bubble")
                     }
                 }
+
                 if isOwnPost, tweet.likeCount > 0 {
                     Button {
                         store.send(.likesButtonTapped(tweet))

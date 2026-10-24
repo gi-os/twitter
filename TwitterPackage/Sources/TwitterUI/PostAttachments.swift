@@ -166,6 +166,7 @@ package struct PollView: View {
                     .clipShape(.rect(cornerRadius: 12))
                     .allowsHitTesting(false)
             }
+
             // X rejects duplicate choices, so the label is a stable identity.
             ForEach(poll.choices.enumerated(), id: \.element.label) { index, choice in
                 PollChoiceRow(
@@ -175,6 +176,7 @@ package struct PollView: View {
                     isSelected: poll.selectedChoiceIndex == index
                 )
             }
+
             PollSummary(poll: poll)
         }
     }
@@ -192,6 +194,7 @@ private struct PollChoiceRow: View {
                 Text(choice.label)
                     .fontWeight(hasMostVotes ? .semibold : .regular)
                     .lineLimit(2)
+
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.tint)
@@ -199,6 +202,7 @@ private struct PollChoiceRow: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
             Text(fraction.formatted(.percent.precision(.fractionLength(0))))
                 .fontWeight(hasMostVotes ? .semibold : .regular)
                 .monospacedDigit()

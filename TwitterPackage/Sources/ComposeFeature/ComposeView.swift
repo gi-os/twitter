@@ -22,6 +22,7 @@ package struct ComposeView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
+
                     TextField(
                         store.draft.replyingTo == nil ? "What's happening?" : "Post your reply",
                         text: $store.text,
@@ -30,10 +31,12 @@ package struct ComposeView: View {
                     .font(.title3)
                     .lineLimit(4...)
                     .focused($isEditorFocused)
+
                     if let quoting = store.draft.quoting {
                         QuoteCard(tweet: quoting) {}
                             .disabled(true)
                     }
+
                     if let errorMessage = store.errorMessage {
                         Label(errorMessage, systemImage: "exclamationmark.triangle")
                             .font(.footnote)
@@ -53,12 +56,14 @@ package struct ComposeView: View {
                     }
                     .disabled(store.isPosting)
                 }
+
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Post", systemImage: "paperplane", role: .confirm) {
                         store.send(.postButtonTapped)
                     }
                     .disabled(!store.canPost)
                 }
+
                 ToolbarItem(placement: .bottomBar) {
                     CharacterCountGauge(remaining: store.remainingCharacters)
                 }

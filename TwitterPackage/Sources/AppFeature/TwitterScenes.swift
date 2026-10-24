@@ -14,6 +14,7 @@ public struct TwitterScenes: Scene {
         WindowGroup {
             AppView()
         }
+
         WindowGroup("Twitter", for: WindowRoute.self) { $route in
             if let route {
                 RouteWindowRoot(route: route)

@@ -47,7 +47,9 @@ package struct ProfileView: View {
                 ToolbarItem(placement: .classicSideBar(isFrontmostColumn: isFrontmostColumn)) {
                     Menu {
                         PostRowStylePicker()
+
                         Divider()
+
                         Button("Sign Out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
                             store.send(.signOutButtonTapped)
                         }
@@ -92,7 +94,9 @@ private struct BlockedProfile: View {
         ScrollView {
             VStack(spacing: 0) {
                 ProfileHeader(user: user, isViewer: false, store: store)
+
                 Divider()
+
                 if user.blocksViewer {
                     ContentUnavailableView {
                         Label("You're blocked", systemImage: "nosign")
@@ -164,17 +168,21 @@ private struct ProfileHeader: View {
                                     size: user.name == user.screenName ? 17 : metrics.bodySize + 7, weight: .bold)
                             )
                             .foregroundStyle(.twitterPrimary)
+
                         if let badge = user.verificationBadge {
                             VerificationBadgeView(badge: badge)
                         }
+
                         if let affiliate = user.affiliate {
                             AffiliateBadge(label: affiliate, size: 20)
                         }
                     }
+
                     HStack(spacing: 6) {
                         Text(verbatim: "@\(user.screenName)")
                             .font(metrics.font(.body))
                             .foregroundStyle(.twitterSecondary)
+
                         if user.followsViewer {
                             Text("Follows you")
                                 .font(metrics.font(.subtext3))
@@ -186,6 +194,7 @@ private struct ProfileHeader: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+
                 if !isViewer {
                     if user.isBlocking {
                         Button("Unblock") { store.send(.blockButtonTapped) }
@@ -215,6 +224,7 @@ private struct ProfileHeader: View {
                 } label: {
                     ProfileCount(count: user.followingCount, label: "Following")
                 }
+
                 Button {
                     store.send(.followersButtonTapped)
                 } label: {
@@ -274,6 +284,7 @@ private struct FollowButton: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 ClassicFollowGlyph(isFollowing: isFollowing)
+
                 Text(isFollowing ? "Following" : "Follow")
             }
         }
@@ -289,6 +300,7 @@ private struct ProfileDetails: View {
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 12) { ProfileDetailItems(user: user) }
+
             VStack(alignment: .leading, spacing: 4) { ProfileDetailItems(user: user) }
         }
         .font(metrics.font(.subtext1))
@@ -305,11 +317,13 @@ private struct ProfileDetailItems: View {
         if !user.location.isEmpty {
             Label(user.location, systemImage: "mappin.and.ellipse")
         }
+
         if let website = user.website, let url = user.websiteURL {
             Link(destination: url) {
                 Label(website, systemImage: "link")
             }
         }
+
         if let joined = user.joined {
             Label("Joined \(joined.formatted(.dateTime.month(.wide).year()))", systemImage: "calendar")
         }

@@ -42,6 +42,7 @@ package struct ClassicWebBar: View {
                 WebBarSegment(canGoBack: canGoBack, canGoForward: canGoForward, back: back, forward: forward)
                     .transition(.move(edge: .leading).combined(with: .opacity))
             }
+
             Text(title)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Color(.webBarTitle))
@@ -49,6 +50,7 @@ package struct ClassicWebBar: View {
                 .lineLimit(1)
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 10)
+
             Button(action: isLoading ? stop : reload) {
                 WebBarReloadGlyph(isLoading: isLoading)
                     .frame(width: 34, height: 30)
@@ -92,7 +94,9 @@ private struct WebBarSegment: View {
         HStack(spacing: 0) {
             WebBarArrow(title: "Back", image: "WebBack", action: back)
                 .disabled(!canGoBack)
+
             Color(.webBarSegmentDivider).frame(width: 1)
+
             WebBarArrow(title: "Forward", image: "WebForward", action: forward)
                 .disabled(!canGoForward)
         }

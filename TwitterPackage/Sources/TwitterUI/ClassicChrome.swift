@@ -34,7 +34,9 @@ extension View {
                 HStack(spacing: 0) {
                     ClassicSideBarFill(hairlineEdge: .trailing)
                         .frame(width: proxy.safeAreaInsets.leading)
+
                     Spacer(minLength: 0)
+
                     ClassicSideBarFill(hairlineEdge: .leading)
                         .frame(width: proxy.safeAreaInsets.trailing)
                 }

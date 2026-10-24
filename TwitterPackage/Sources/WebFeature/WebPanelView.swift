@@ -41,12 +41,15 @@ package struct WebPanelView: View {
                     .frame(maxWidth: 520)
                 }
                 .sharedBackgroundVisibility(.hidden)
+
                 ToolbarItem(placement: .classicSideBar(isFrontmostColumn: isFrontmostColumn)) {
                     Menu {
                         ShareLink(item: page.url ?? store.url)
+
                         Button("Open in Safari", systemImage: "safari") {
                             store.send(.openInSafariButtonTapped)
                         }
+
                         Button("Copy Link", systemImage: "link") {
                             UIPasteboard.general.url = page.url ?? store.url
                         }

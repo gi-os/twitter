@@ -22,6 +22,7 @@ package struct ClassicSegmentedControl<Value: Hashable>: View {
                 if index > 0 {
                     palette.divider.frame(width: 1)
                 }
+
                 ClassicSegment(title: title(option), isSelected: option == selection, palette: palette) {
                     selection = option
                 }

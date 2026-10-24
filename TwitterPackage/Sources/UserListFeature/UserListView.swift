@@ -21,6 +21,7 @@ package struct UserListView: View {
                     UserRow(user: user, store: store)
                         .onAppear { store.send(.rowAppeared(user.id)) }
                 }
+
                 UserListFooter(store: store)
             }
             // Caps line length for reading, as timelines do, while the scroll view spans the column.
@@ -51,21 +52,25 @@ private struct UserRow: View {
             HStack(alignment: .top, spacing: metrics.gutter) {
                 Avatar(user: user, size: metrics.avatarSize)
                     .profilePreview(for: user) { store.send(.userTapped(user)) }
+
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .center, spacing: 8) {
                         VStack(alignment: .leading, spacing: 2) {
                             AuthorLine(user: user, date: nil, layout: .stacked)
+
                             if user.followsViewer {
                                 FollowsYouLabel()
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
+
                         if user.id != viewer?.id, !user.isBlocking, !user.blocksViewer {
                             UserFollowButton(isFollowing: user.isFollowing) {
                                 store.send(.followButtonTapped(user.id))
                             }
                         }
                     }
+
                     if !user.bio.isEmpty {
                         Text(user.bio)
                             .font(metrics.font(.body))
@@ -84,6 +89,7 @@ private struct UserRow: View {
             .accessibilityElement(children: .contain)
             .accessibilityAddTraits(.isButton)
             .accessibilityAction(named: "View Profile") { store.send(.userTapped(user)) }
+
             TwitterDivider()
         }
     }
@@ -112,6 +118,7 @@ private struct UserFollowButton: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 ClassicFollowGlyph(isFollowing: isFollowing)
+
                 Text(isFollowing ? "Following" : "Follow")
             }
         }

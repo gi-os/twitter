@@ -62,6 +62,7 @@ private struct LaunchingView: View {
     var body: some View {
         ZStack {
             Color.clear
+
             if showsSpinner {
                 ProgressView()
                     .transition(.opacity)

@@ -26,6 +26,7 @@ private struct ProfilePreviewMenu: ViewModifier {
             Button(action: open) {
                 Label("View Profile", systemImage: "person.crop.circle")
             }
+
             if supportsMultipleWindows {
                 Button {
                     openWindow(value: Route.profile(user).window)
@@ -33,12 +34,15 @@ private struct ProfilePreviewMenu: ViewModifier {
                     Label("Open in New Window", systemImage: "macwindow.badge.plus")
                 }
             }
+
             Divider()
+
             Button {
                 UIPasteboard.general.string = "@\(user.screenName)"
             } label: {
                 Label("Copy Username", systemImage: "at")
             }
+
             if let url = user.profileURL {
                 ShareLink(item: url)
             }
@@ -77,7 +81,9 @@ package struct ProfilePreviewCard: View {
                     avatar
                         .padding(3)
                         .background(.background, in: avatarShape(size: avatarSize + 6))
+
                     Spacer(minLength: 0)
+
                     if user?.followsViewer == true {
                         Text("Follows you")
                             .font(TweetMetrics.standard.font(.subtext3))
@@ -133,13 +139,16 @@ package struct ProfilePreviewCard: View {
                     .font(metrics.font(.headline2, weight: .bold))
                     .foregroundStyle(.twitterPrimary)
                     .lineLimit(1)
+
                 if let badge = user?.verificationBadge {
                     VerificationBadgeView(badge: badge)
                         .imageScale(.small)
                 }
+
                 if let affiliate = user?.affiliate {
                     AffiliateBadge(label: affiliate, size: 16)
                 }
+
                 if user?.isProtected == true {
                     Image(systemName: "lock.fill")
                         .imageScale(.small)
@@ -147,6 +156,7 @@ package struct ProfilePreviewCard: View {
                         .accessibilityLabel("Protected")
                 }
             }
+
             Text(verbatim: "@\(screenName)")
                 .font(metrics.font(.body))
                 .foregroundStyle(.twitterSecondary)
@@ -162,6 +172,7 @@ package struct ProfilePreviewCard: View {
             Text(
                 "\(Text(following.compact).font(metrics.font(.subtext1, weight: .bold)).foregroundStyle(.twitterPrimary)) Following"
             )
+
             Text(
                 "\(Text(followers.compact).font(metrics.font(.subtext1, weight: .bold)).foregroundStyle(.twitterPrimary)) Followers"
             )

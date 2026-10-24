@@ -45,7 +45,9 @@ private struct MediaPreviewMenu: ViewModifier {
                 case .video: Label(openTitle ?? "Play Video", systemImage: "play")
                 }
             }
+
             Divider()
+
             if MediaLibrary.canSave, media.kind == .photo || media.videoURL != nil {
                 Button {
                     Task { await MediaLibrary.save(media) }
@@ -53,6 +55,7 @@ private struct MediaPreviewMenu: ViewModifier {
                     Label(media.kind == .photo ? "Save Photo" : "Save Video", systemImage: "square.and.arrow.down")
                 }
             }
+
             if media.kind == .photo {
                 Button {
                     Task { await MediaLibrary.copy(media) }
@@ -69,6 +72,7 @@ private struct MediaPreviewMenu: ViewModifier {
             } else if let url = link ?? media.videoURL {
                 ShareLink(item: url)
             }
+
             if let link {
                 Button {
                     UIPasteboard.general.url = link
@@ -119,6 +123,7 @@ struct MediaPreviewImage: View {
             } else {
                 ImagePlaceholder()
             }
+
             if media.kind != .photo, let url = media.inlineVideoURL ?? media.videoURL {
                 LoopingVideo(url: url)
             }

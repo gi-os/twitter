@@ -26,22 +26,26 @@ package struct MainView: View {
             } label: {
                 TabLabel("Home", icon: .home, isSelected: store.selectedTab == .home)
             }
+
             Tab(value: .notifications) {
                 TabStackView(
                     store: store.scope(state: \.notifications, action: \.notifications), title: "Notifications")
             } label: {
                 TabLabel("Notifications", icon: .at, isSelected: store.selectedTab == .notifications)
             }
+
             Tab(value: .bookmarks) {
                 TabStackView(store: store.scope(state: \.bookmarks, action: \.bookmarks), title: "Bookmarks")
             } label: {
                 TabLabel("Bookmarks", icon: .bookmark, isSelected: store.selectedTab == .bookmarks)
             }
+
             Tab(value: .profile) {
                 TabStackView(store: store.scope(state: \.profile, action: \.profile), title: "Profile")
             } label: {
                 TabLabel("Profile", icon: .profile, isSelected: store.selectedTab == .profile)
             }
+
             Tab(value: .explore, role: .search) {
                 TabStackView(store: store.scope(state: \.explore, action: \.explore), title: "Explore")
             } label: {

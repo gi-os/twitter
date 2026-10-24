@@ -67,6 +67,7 @@ package struct TweetRow: View {
         HStack(alignment: .top, spacing: metrics.gutter) {
             VStack(spacing: 0) {
                 avatarButton
+
                 if item.connectsBelow {
                     ThreadConnector()
                 }
@@ -75,10 +76,12 @@ package struct TweetRow: View {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 2 * metrics.unit) {
                     AuthorLine(user: tweet.author, date: tweet.createdAt)
+
                     if showsReplyingTo {
                         ReplyingToLine(screenNames: tweet.replyingTo)
                     }
                 }
+
                 postContent
                     .padding(.top, tweet.text.isEmpty ? metrics.mediaTextMargin : metrics.authorBodyMargin)
             }
@@ -90,13 +93,16 @@ package struct TweetRow: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: metrics.gutter) {
                 avatarButton
+
                 // The focused post's time is spelled out above its action bar instead.
                 AuthorLine(user: tweet.author, date: isFocused ? nil : tweet.createdAt, layout: .stacked)
             }
+
             if showsReplyingTo {
                 ReplyingToLine(screenNames: tweet.replyingTo)
                     .padding(.top, metrics.stackedBodyMargin)
             }
+
             postContent
                 .padding(.top, showsReplyingTo ? metrics.authorBodyMargin : metrics.stackedBodyMargin)
         }
@@ -128,15 +134,19 @@ package struct TweetRow: View {
             if !tweet.text.isEmpty {
                 ExpandableTweetText(tweet: tweet, isFocused: isFocused)
             }
+
             if let poll = tweet.poll {
                 PollView(poll: poll)
             }
+
             if !tweet.media.isEmpty {
                 MediaGrid(media: tweet.media, tweet: tweet)
             }
+
             if let card = tweet.card, tweet.media.isEmpty {
                 LinkCardView(card: card)
             }
+
             if let quoted = tweet.quoted.first {
                 QuoteCard(tweet: quoted) { store.send(.tweetTapped(quoted)) }
                     // Its own menu, so pressing the quoted post lifts that post rather than the one quoting it.
@@ -146,18 +156,23 @@ package struct TweetRow: View {
             } else if let quotedTombstone = tweet.quotedTombstone {
                 TombstoneView(tombstone: quotedTombstone)
             }
+
             if let note = tweet.communityNote {
                 CommunityNoteCard(note: note)
             }
+
             if isFocused, let restriction = tweet.replyRestriction {
                 ReplyRestrictionBanner(restriction: restriction)
             }
+
             if isFocused, let date = tweet.createdAt {
                 FocusedTimestampLine(date: date, views: tweet.viewCount)
             }
+
             if isFocused {
                 FocusedStatsLine(tweet: tweet, engagement: engagement, store: store)
             }
+
             if isFocused {
                 DetailEngagementBar(tweet: tweet, engagement: engagement, store: store)
                     // Across the row's full width.
@@ -202,6 +217,7 @@ private struct ExpandableTweetText: View {
                 style: isFocused ? .headline2 : .body,
                 characterLimit: isTruncated ? TweetText.timelineCharacterLimit : nil
             )
+
             if isTruncated {
                 Button("Show more") {
                     withAnimation(.snappy) { isExpanded = true }
@@ -222,6 +238,7 @@ private struct ReplyRestrictionBanner: View {
         Label {
             VStack(alignment: .leading, spacing: 2) {
                 Text(restriction.message)
+
                 if !restriction.viewerCanReply {
                     Text("You can't reply to this post.")
                         .foregroundStyle(.secondary)
@@ -320,10 +337,14 @@ private struct FocusedTimestampLine: View {
     var body: some View {
         HStack(spacing: 4) {
             Text(date, format: .dateTime.hour().minute())
+
             Text(verbatim: "·")
+
             Text(date, format: .dateTime.month(.abbreviated).day().year())
+
             if let views {
                 Text(verbatim: "·")
+
                 Text(
                     "\(Text(views.compact).font(metrics.font(.subtext1, weight: .bold)).foregroundStyle(.twitterPrimary)) Views"
                 )
@@ -345,6 +366,7 @@ private struct ContextLabel: View {
         HStack(spacing: metrics.gutter) {
             Image(systemName: symbol)
                 .frame(width: metrics.avatarSize, alignment: .trailing)
+
             Text(text).lineLimit(1)
         }
         .font(metrics.font(.subtext2, weight: .bold))
@@ -363,6 +385,7 @@ package struct EngagementBar: View {
     package var body: some View {
         ViewThatFits(in: .horizontal) {
             EngagementBarRow(tweet: tweet, engagement: engagement, store: store, showsViews: true)
+
             EngagementBarRow(tweet: tweet, engagement: engagement, store: store, showsViews: false)
         }
     }
@@ -384,20 +407,28 @@ private struct EngagementBarRow: View {
             )
             .disabled(!tweet.viewerCanReply)
             .opacity(tweet.viewerCanReply ? 1 : 0.4)
+
             BarSpacer()
+
             RepostMenu(tweet: tweet, engagement: engagement, store: store)
+
             BarSpacer()
+
             LikeButton(isLiked: engagement.like.isOn, count: engagement.like.count) {
                 store.send(.likeButtonTapped(tweet))
             }
+
             if showsViews, let views = tweet.viewCount {
                 BarSpacer()
+
                 EngagementLabel(icon: .views, count: views)
                     .foregroundStyle(.twitterSecondary)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("\(views) views")
             }
+
             Spacer(minLength: 0)
+
             HStack(spacing: 10) {
                 EngagementButton(
                     action: { store.send(.bookmarkButtonTapped(tweet)) },
@@ -406,6 +437,7 @@ private struct EngagementBarRow: View {
                     isActive: engagement.bookmark.isOn,
                     label: engagement.bookmark.isOn ? "Remove Bookmark" : "Bookmark"
                 )
+
                 ShareLink(item: tweet.url) {
                     EngagementLabel(icon: .shareStroke, count: nil, minWidth: EngagementLabel.iconOnlyWidth)
                         .foregroundStyle(.twitterSecondary)
@@ -434,10 +466,13 @@ private struct DetailEngagementBar: View {
             )
             .disabled(!tweet.viewerCanReply)
             .opacity(tweet.viewerCanReply ? 1 : 0.4)
+
             RepostMenu(tweet: tweet, engagement: engagement, store: store)
+
             LikeButton(isLiked: engagement.like.isOn, count: engagement.like.count) {
                 store.send(.likeButtonTapped(tweet))
             }
+
             EngagementButton(
                 action: { store.send(.bookmarkButtonTapped(tweet)) },
                 activeIcon: .bookmark,
@@ -445,6 +480,7 @@ private struct DetailEngagementBar: View {
                 isActive: engagement.bookmark.isOn,
                 label: engagement.bookmark.isOn ? "Remove Bookmark" : "Bookmark"
             )
+
             ShareLink(item: tweet.url) {
                 EngagementLabel(icon: .shareStroke, count: nil, minWidth: EngagementLabel.iconOnlyWidth)
                     .foregroundStyle(.twitterSecondary)
@@ -468,6 +504,7 @@ private struct RepostMenu: View {
             } label: {
                 Label(engagement.repost.isOn ? "Undo Repost" : "Repost", systemImage: "arrow.2.squarepath")
             }
+
             Button {
                 store.send(.quoteButtonTapped(tweet))
             } label: {
@@ -504,22 +541,27 @@ package struct TweetMenu: View {
             Label("Reply", systemImage: "arrowshape.turn.up.left")
         }
         .disabled(!tweet.viewerCanReply)
+
         Button {
             store.send(.repostButtonTapped(tweet))
         } label: {
             Label(engagement.repost.isOn ? "Undo Repost" : "Repost", systemImage: "arrow.2.squarepath")
         }
+
         Button {
             store.send(.quoteButtonTapped(tweet))
         } label: {
             Label("Quote", systemImage: "quote.bubble")
         }
+
         PostActivityMenu(tweet: tweet, isOwnPost: tweet.author.id == viewer?.id, store: store)
+
         Button {
             store.send(.authorTapped(tweet.author))
         } label: {
             Label("View @\(tweet.author.screenName)", systemImage: "person")
         }
+
         if tweet.author.id != viewer?.id {
             Button(role: tweet.author.isBlocking ? nil : .destructive) {
                 store.send(.blockButtonTapped(tweet.author))
@@ -530,21 +572,27 @@ package struct TweetMenu: View {
                     systemImage: "nosign")
             }
         }
+
         if supportsMultipleWindows {
             Divider()
+
             Button {
                 openWindow(value: Route.thread(tweet).window)
             } label: {
                 Label("Open in New Window", systemImage: "macwindow.badge.plus")
             }
+
             Button {
                 openWindow(value: Route.profile(tweet.author).window)
             } label: {
                 Label("Open @\(tweet.author.screenName) in New Window", systemImage: "person.crop.rectangle.badge.plus")
             }
         }
+
         Divider()
+
         ShareLink(item: tweet.url)
+
         Button {
             UIPasteboard.general.url = tweet.url
         } label: {
@@ -561,6 +609,7 @@ package struct NotificationRow: View {
         HStack(alignment: .top, spacing: 12) {
             NotificationIcon(icon: notification.icon)
                 .frame(width: 44, alignment: .trailing)
+
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: -8) {
                     ForEach(notification.users.prefix(8)) { user in
@@ -579,8 +628,10 @@ package struct NotificationRow: View {
                         .profilePreview(for: user) { store.send(.authorTapped(user)) }
                     }
                 }
+
                 Text(notification.attributedMessage)
                     .font(.subheadline)
+
                 if let tweet = notification.tweet, !tweet.text.isEmpty {
                     Text(tweet.text)
                         .font(.subheadline)

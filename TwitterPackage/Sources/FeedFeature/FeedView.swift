@@ -22,11 +22,13 @@ package struct FeedView<Header: View>: View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 header
+
                 if case .userMedia = store.source {
                     FeedMediaGrid(store: store)
                 } else {
                     FeedRows(store: store)
                 }
+
                 FeedFooter(store: store)
             }
             .scrollTargetLayout()
@@ -135,6 +137,7 @@ private struct FeedItemRow: View {
                     store.send(.showMoreButtonTapped(cursor))
                 }
             }
+
             if !runsThreadLineThrough {
                 TwitterDivider()
             }
@@ -169,6 +172,7 @@ private struct ShowMoreRow: View {
                 if isLoading {
                     ProgressView()
                 }
+
                 Text(cursor.label)
                     .letterpress()
             }

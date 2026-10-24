@@ -167,6 +167,7 @@ package struct MediaViewer: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close", systemImage: "xmark", role: .close) { dismiss() }
                 }
+
                 if let item = media.first(where: { $0.id == selection }), item.kind == .photo {
                     ToolbarItem(placement: .primaryAction) {
                         ShareLink(item: item.fullSizeURL)
@@ -264,13 +265,16 @@ private struct MediaCaption: View {
             if let tweet {
                 HStack(spacing: 10) {
                     Avatar(user: tweet.author, size: 36)
+
                     AuthorLine(user: tweet.author, date: tweet.createdAt)
                 }
+
                 if !tweet.text.isEmpty {
                     TweetText(tweet: tweet, font: isLayered ? .subheadline : .body)
                         .lineLimit(isLayered ? 4 : nil)
                 }
             }
+
             if let index, let altText = media[index].altText, !altText.isEmpty {
                 Label {
                     Text(altText).lineLimit(isLayered ? 2 : nil)
@@ -280,6 +284,7 @@ private struct MediaCaption: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             }
+
             if media.count > 1, let index {
                 Text("\(index + 1) of \(media.count)")
                     .font(.footnote.monospacedDigit())
@@ -388,6 +393,7 @@ private struct VideoPage: View {
     var body: some View {
         ZStack {
             VideoPlayer(player: player)
+
             // The tile's frame until the first video frame, so the zoom transition never lands on black.
             RemoteImage(url: thumbnail.url, pointSize: thumbnail.pointSize, contentMode: .fit) {
                 Color.clear

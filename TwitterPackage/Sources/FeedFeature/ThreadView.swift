@@ -29,6 +29,7 @@ package struct ThreadView: View {
             VStack(spacing: 0) {
                 LazyVStack(spacing: 0) {
                     FeedRows(store: store)
+
                     FeedFooter(store: store)
                         .onGeometryChange(for: CGFloat.self) { proxy in
                             proxy.frame(in: .named(ThreadView.coordinateSpace)).maxY
@@ -37,6 +38,7 @@ package struct ThreadView: View {
                         }
                 }
                 .scrollTargetLayout()
+
                 Color.clear
                     .frame(height: spacerHeight)
                     .transaction { $0.disablesAnimations = true }
