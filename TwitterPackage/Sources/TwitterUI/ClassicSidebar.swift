@@ -28,7 +28,8 @@ package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
     /// centred a little in from the display's rounded corner, and the sidebar lines up under it.
     let centerOffset: CGFloat
     @Binding var selection: ID
-    let compose: () -> Void
+    /// Compose, unless the window's own vertical bar carries it (see ``View/classicSideBar()``).
+    let compose: (() -> Void)?
     let reselect: (ID) -> Void
     @ViewBuilder let actions: Actions
 
@@ -39,7 +40,7 @@ package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
         isExpanded: Bool,
         topInset: CGFloat = 0,
         centerOffset: CGFloat = 0,
-        compose: @escaping () -> Void,
+        compose: (() -> Void)?,
         reselect: @escaping (ID) -> Void,
         @ViewBuilder actions: () -> Actions
     ) {
@@ -56,19 +57,22 @@ package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
 
     package var body: some View {
         VStack(spacing: 0) {
-            Color.clear.frame(height: topInset)
+            if let compose {
+                Color.clear.frame(height: topInset)
 
-            // Side by side when expanded, stacked in the strip, a little below the top.
-            let layout = isExpanded ? AnyLayout(HStackLayout(spacing: 8)) : AnyLayout(VStackLayout(spacing: 12))
-            layout {
-                Button(action: compose) {
-                    ClassicGlyphLabel("New Post", glyph: .compose)
+
+                // Side by side when expanded, stacked in the strip, a little below the top.
+                let layout = isExpanded ? AnyLayout(HStackLayout(spacing: 8)) : AnyLayout(VStackLayout(spacing: 12))
+                layout {
+                    Button(action: compose) {
+                        ClassicGlyphLabel("New Post", glyph: .compose)
+                    }
+                    .buttonStyle(ClassicComposeButtonStyle(isExpanded: isExpanded))
+
+                    actions
                 }
-                .buttonStyle(ClassicComposeButtonStyle(isExpanded: isExpanded))
-
-                actions
+                .padding(.top, 12)
             }
-            .padding(.top, 12)
 
             Spacer(minLength: 16)
 
@@ -102,10 +106,10 @@ package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
 
 /// Compose, the one action that matters most: the app's blue button (`btn_following`, as Follow is) with the glyph in
 /// white, the size of a tab; expanded, it says "New Post" beside the glyph and fills the row.
-private struct ClassicComposeButtonStyle: ButtonStyle {
+package struct ClassicComposeButtonStyle: ButtonStyle {
     let isExpanded: Bool
 
-    func makeBody(configuration: Configuration) -> some View {
+    package func makeBody(configuration: Configuration) -> some View {
         Group {
             if isExpanded {
                 configuration.label.labelStyle(.titleAndIcon)
@@ -126,6 +130,13 @@ private struct ClassicComposeButtonStyle: ButtonStyle {
         }
         .brightness(configuration.isPressed ? -0.12 : 0)
         .contentShape(.rect)
+    }
+}
+
+extension ButtonStyle where Self == ClassicComposeButtonStyle {
+    /// Compose in the app's blue, with its name beside the glyph when there's room for it.
+    package static func classicCompose(isExpanded: Bool) -> ClassicComposeButtonStyle {
+        ClassicComposeButtonStyle(isExpanded: isExpanded)
     }
 }
 
@@ -236,8 +247,7 @@ package struct ClassicColumnMenu<Items: View>: View {
     }
 }
 
-/// A column's "…" menu: in its own bar in a window with a ``ClassicSidebar``. In a window without one, the frontmost
-/// column's menu goes to iPhone Duo's side bar where there is one.
+/// A column's "…" menu, in its own bar.
 package struct ClassicColumnMenuToolbarItem<Items: View>: ToolbarContent {
     let glyph: ClassicGlyph
     let hasClassicSidebar: Bool
@@ -260,22 +270,12 @@ package struct ClassicColumnMenuToolbarItem<Items: View>: ToolbarContent {
     }
 
     package var body: some ToolbarContent {
-        if hasClassicSidebar {
-            // Always in its own bar: every column carries its own, wherever it is in the stack.
-            ToolbarItem(placement: .topBarTrailing) {
-                ClassicColumnMenu(title, glyph: glyph, isOnSideBar: false) {
-                    items
-                }
+        // Always in its own bar: every column carries its own, wherever it is in the stack.
+        ToolbarItem(placement: .topBarTrailing) {
+            ClassicColumnMenu(title, glyph: glyph, isOnSideBar: false) {
+                items
             }
-            .sharedBackgroundVisibility(.hidden)
-        } else {
-            ToolbarItem(placement: .classicSideBar(isFrontmostColumn: isFrontmostColumn)) {
-                ClassicColumnMenu(title, glyph: glyph, isOnSideBar: isFrontmostColumn) {
-                    items
-                }
-            }
-            .axisBehavior(.verticalPreferred)
-            .sharedBackgroundVisibility(.hidden)
         }
+        .sharedBackgroundVisibility(.hidden)
     }
 }

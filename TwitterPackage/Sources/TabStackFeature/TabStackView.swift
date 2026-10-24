@@ -63,7 +63,7 @@ package struct TabStackView: View {
                 // changing (it drops its root or ignores the pushes), so folding or unfolding gives it a fresh one, and
                 // the feed restores its scroll position from state.
                 NavigationStack(path: layout.canShowColumns ? rootColumnPath : path) {
-                    TabRootView(store: store, title: title)
+                    TabRootView(store: store, title: title, isFrontmost: store.path.isEmpty || !layout.showsColumns)
                         .environment(\.isFrontmostColumn, store.path.isEmpty || !layout.showsColumns)
                         // A lone stack reaches under the side bar; painting it here keeps the fill beneath the bar's
                         // own buttons.
@@ -83,9 +83,7 @@ package struct TabStackView: View {
                 // The root reflows once, at its new width, rather than on every frame of the new column sliding in.
                 .transaction(value: layout.showsColumns) { $0.animation = nil }
                 .dimsUnderLeadingEdge(isEnabled: layout.showsColumns)
-                .columnCard(
-                    layout.showsCards ? .column : (layout.canShowColumns && isRegular ? .lone : nil)
-                )
+                .columnCard(isEnabled: layout.showsCards || (layout.canShowColumns && isRegular))
                 // Alone on the backdrop, the root casts onto it; opened columns cover this as they slide over.
                 .overlay(alignment: .trailing) {
                     if layout.showsColumns { ClassicColumnShadow(edge: .trailing) }
@@ -98,9 +96,12 @@ package struct TabStackView: View {
                 if layout.showsColumns {
                     ForEach(Array(store.path.ids.enumerated()), id: \.element) { index, id in
                         if let columnStore = store.scope(state: \.path[id: id], action: \.path[id: id]) {
-                            StackedColumn(store: columnStore, isFrontmost: index == store.path.count - 1) {
-                                requestClose(after: index == 0 ? nil : store.path.ids[index - 1])
-                            }
+                            StackedColumn(
+                                store: columnStore,
+                                isFrontmost: index == store.path.count - 1,
+                                close: { requestClose(after: index == 0 ? nil : store.path.ids[index - 1]) },
+                                compose: { store.send(.composeButtonTapped) }
+                            )
                             .frame(width: layout.width(ofColumn: index + 1))
                             .background { ColumnPaper() }
                             // Pulled down by its bar, it goes, and every column after it follows.
@@ -108,7 +109,7 @@ package struct TabStackView: View {
                                 popColumns(after: index == 0 ? nil : store.path.ids[index - 1])
                             }
                             .dimsUnderLeadingEdge(isEnabled: true)
-                            .columnCard(layout.showsCards ? .column : nil)
+                            .columnCard(isEnabled: layout.showsCards)
                             // Outside the card, onto the column it lies on.
                             .background(alignment: .leading) { ClassicColumnShadow(edge: .leading) }
                             .alreadyHereShake(trigger: store.shake.count, isActive: store.shake.column == id)
@@ -387,36 +388,22 @@ private struct PullDownToClose: ViewModifier {
     }
 }
 
-/// How a column sits on the backdrop as a card.
-private enum ColumnCardStyle {
-    /// One of several: dropped a little from the top of the display.
-    case column
-    /// The root alone, spanning the width: inset a little all round but the bottom.
-    case lone
-
-    var inset: EdgeInsets {
-        switch self {
-        case .column: EdgeInsets(top: 4, leading: 0, bottom: 0, trailing: 0)
-        case .lone: EdgeInsets(top: 8, leading: 8, bottom: 0, trailing: 8)
-        }
-    }
-}
-
-/// Rounds a column's top corners without clipping anything else: its bars still reach up under the status bar where
-/// it isn't a card, and its content always runs down under the home indicator.
+/// Shows a column as a card on the backdrop: its safe area, with sharp rounded top corners, so neither the display's
+/// own corners nor the status bar clip it. Nothing else is clipped: its content still runs down under the home
+/// indicator.
 private struct ColumnCard: ViewModifier {
-    let style: ColumnCardStyle?
+    let isEnabled: Bool
 
     func body(content: Content) -> some View {
-        if let style {
-            // Its top a few points below the display's, and open at the bottom.
+        if isEnabled {
             content
-                .padding(.horizontal, style.inset.leading)
                 .mask {
-                    UnevenRoundedRectangle(topLeadingRadius: 4, topTrailingRadius: 4)
-                        .padding(.top, style.inset.top)
-                        .padding(.horizontal, style.inset.leading)
-                        .ignoresSafeArea(edges: .vertical)
+                    GeometryReader { proxy in
+                        let insets = proxy.safeAreaInsets
+                        UnevenRoundedRectangle(topLeadingRadius: 4, topTrailingRadius: 4)
+                            .padding(EdgeInsets(top: insets.top, leading: insets.leading, bottom: 0, trailing: insets.trailing))
+                    }
+                    .ignoresSafeArea()
                 }
         } else {
             content
@@ -440,6 +427,8 @@ private struct StackedColumn: View {
     let store: StoreOf<TabStackPath>
     let isFrontmost: Bool
     let close: () -> Void
+    let compose: () -> Void
+    @Environment(\.hasClassicSidebar) private var hasClassicSidebar
 
     var body: some View {
         NavigationStack {
@@ -454,8 +443,30 @@ private struct StackedColumn: View {
                             .buttonStyle(.classicBar(isOnSideBar: false))
                     }
                     .sharedBackgroundVisibility(.hidden)
+
+                    if !hasClassicSidebar, isFrontmost {
+                        ComposeToolbarItem(compose: compose)
+                    }
                 }
         }
+    }
+}
+
+/// Compose, the prominent action, on the frontmost column: at the top of iPhone Duo's vertical bar where there is
+/// one, which keeps it clear of the status bar and camera wherever they are.
+private struct ComposeToolbarItem: ToolbarContent {
+    let compose: () -> Void
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .topBarPinnedTrailing) {
+            Button(action: compose) {
+                ClassicGlyphLabel("New Post", glyph: .compose)
+            }
+            .buttonStyle(.classicCompose(isExpanded: false))
+        }
+        .visibilityPriority(.high)
+        .axisBehavior(.verticalPreferred)
+        .sharedBackgroundVisibility(.hidden)
     }
 }
 
@@ -474,8 +485,8 @@ extension View {
     }
 
     /// Twitter for iPad's columns as cards on the backdrop: dropped a little from the top, with rounded top corners.
-    fileprivate func columnCard(_ style: ColumnCardStyle?) -> some View {
-        modifier(ColumnCard(style: style))
+    fileprivate func columnCard(isEnabled: Bool) -> some View {
+        modifier(ColumnCard(isEnabled: isEnabled))
     }
 
     fileprivate func dimsUnderLeadingEdge(isEnabled: Bool) -> some View {
@@ -632,27 +643,16 @@ struct ColumnLayout: Equatable {
 private struct TabRootView: View {
     let store: StoreOf<TabStack>
     let title: LocalizedStringKey
+    let isFrontmost: Bool
     @Environment(\.hasClassicSidebar) private var hasClassicSidebar
 
     var body: some View {
         TabRootContentView(store: store.scope(state: \.root, action: \.root))
             .navigationTitle(title)
             .toolbar {
-                // A window's sidebar has its own.
-                if !hasClassicSidebar {
-                    ToolbarItem(placement: .bottomBar) {
-                        Button {
-                            store.send(.composeButtonTapped)
-                        } label: {
-                            ClassicGlyphLabel("New Post", glyph: .compose)
-                        }
-                        .buttonStyle(.classicBar(isOnSideBar: true))
-                    }
-                    .visibilityPriority(.high)
-                    // In iPhone Duo's side bar where there is one, with the tabs.
-                    .axisBehavior(.verticalPreferred)
-                    // A bare glyph, as 4.x's were, rather than a glass disc.
-                    .sharedBackgroundVisibility(.hidden)
+                // A window's sidebar has its own; otherwise the frontmost column carries it.
+                if !hasClassicSidebar, isFrontmost {
+                    ComposeToolbarItem { store.send(.composeButtonTapped) }
                 }
             }
     }

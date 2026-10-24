@@ -34,7 +34,7 @@ package struct MainView: View {
         ZStack {
             // Side by side, so nothing ever runs under the sidebar.
             HStack(spacing: 0) {
-                if placement.edge == .leading {
+                if placement.edge == .leading, !placement.paintsUnderSystemBar {
                     placedSidebar(placement)
                 }
 
@@ -76,7 +76,10 @@ package struct MainView: View {
                     }
                 }
                 .tabViewStyle(.tabBarOnly)
-                .environment(\.hasClassicSidebar, true)
+                // Where the sidebar is painted along iPhone Duo's own side bar, the system's vertical bar carries
+                // compose and back; elsewhere the sidebar does.
+                .environment(\.hasClassicSidebar, !placement.paintsUnderSystemBar)
+                .environment(\.classicSideBarTabs, placement.paintsUnderSystemBar ? AnyView(tabStrip) : nil)
                 // The columns lay out for the width they'll have once the sidebar has settled, not the width it's
                 // still animating away from, so opening a column reflows them once.
                 .environment(\.columnStripWidth, placement.stripWidth)
@@ -84,14 +87,15 @@ package struct MainView: View {
                 // sidebar beside them keeps clear of it and of the camera itself.
                 .ignoresSafeArea(.container, edges: .bottom)
 
-                if placement.edge == .trailing {
+                if placement.edge == .trailing, !placement.paintsUnderSystemBar {
                     placedSidebar(placement)
                 }
             }
             // Sideways into the system's side bar, which the sidebar fills.
             .ignoresSafeArea(
                 .container,
-                edges: placement.isInSystemSideBar ? (placement.edge == .leading ? .leading : .trailing) : []
+                edges: placement.isInSystemSideBar && !placement.paintsUnderSystemBar
+                    ? (placement.edge == .leading ? .leading : .trailing) : []
             )
         }
         // In step with the columns sliding as one opens or closes.
@@ -128,13 +132,7 @@ package struct MainView: View {
 
     private func sidebar(_ placement: SidebarPlacement) -> some View {
         ClassicSidebar(
-            tabs: [
-                ClassicSidebarTab("Home", icon: .home, id: MainFeature.Tab.home),
-                ClassicSidebarTab("Notifications", icon: .at, id: .notifications),
-                ClassicSidebarTab("Bookmarks", icon: .bookmark, id: .bookmarks),
-                ClassicSidebarTab("Profile", icon: .profile, id: .profile),
-                ClassicSidebarTab("Explore", icon: .hash, id: .explore)
-            ],
+            tabs: Self.tabs,
             selection: $store.selectedTab,
             edge: placement.edge,
             isExpanded: placement.isExpanded,
@@ -144,6 +142,30 @@ package struct MainView: View {
             reselect: { tabStack($0).send(.tabReselected) }
         ) {
             SidebarBackButton(store: tabStack(store.selectedTab))
+        }
+    }
+
+    private static var tabs: [ClassicSidebarTab<MainFeature.Tab>] {
+        [
+        ClassicSidebarTab("Home", icon: .home, id: MainFeature.Tab.home),
+        ClassicSidebarTab("Notifications", icon: .at, id: .notifications),
+        ClassicSidebarTab("Bookmarks", icon: .bookmark, id: .bookmarks),
+        ClassicSidebarTab("Profile", icon: .profile, id: .profile),
+        ClassicSidebarTab("Explore", icon: .hash, id: .explore)
+        ]
+    }
+
+    /// The tabs alone, for painting along the system's side bar.
+    private var tabStrip: some View {
+        ClassicSidebar(
+            tabs: Self.tabs,
+            selection: $store.selectedTab,
+            isExpanded: false,
+            centerOffset: -5,
+            compose: nil,
+            reselect: { tabStack($0).send(.tabReselected) }
+        ) {
+            EmptyView()
         }
     }
 
@@ -189,6 +211,9 @@ private struct SidebarPlacement: Equatable {
     var isExpanded = false
     var isInSystemSideBar = false
     var statusBarHeight: CGFloat = 0
+    /// Collapsed in iPhone Duo's own side bar: the tabs are painted along it, under the system's vertical bar, which
+    /// places compose and back clear of the status bar and camera whichever way the device is turned.
+    var paintsUnderSystemBar: Bool { isInSystemSideBar && !isExpanded }
     /// The width left for the tabs beside the sidebar.
     var stripWidth: CGFloat = 0
     var width: CGFloat = 0
@@ -212,7 +237,7 @@ private struct SidebarPlacement: Equatable {
             let sideBarWidth = inset > 0 ? inset : Self.collapsedWidth
             isExpanded = canExpand
             width = isExpanded ? max(Self.expandedWidth, sideBarWidth) : sideBarWidth
-            stripWidth = geometry.width + inset - width
+            stripWidth = isExpanded ? geometry.width + inset - width : geometry.width
         } else {
             isExpanded = canExpand
             width = isExpanded ? Self.expandedWidth : Self.collapsedWidth

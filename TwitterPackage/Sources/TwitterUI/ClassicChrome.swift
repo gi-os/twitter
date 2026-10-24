@@ -26,24 +26,11 @@ extension View {
     }
 
     /// Twitter 4.x's tab bar turned on its side, filling the leading and trailing safe areas: where iPhone Duo's side
-    /// bar keeps the status bar, the tabs and bar buttons. Draws nothing where there are no side insets. Apply it below
-    /// the navigation stack's bars (inside its content), or it covers the side bar's buttons.
+    /// bar keeps the status bar and the window's own vertical bar (compose, back), with the window's tabs
+    /// (``EnvironmentValues/classicSideBarTabs``) along it. Draws nothing where there are no side insets. Apply it below
+    /// the navigation stack's bars (inside its content), so the system's bar items sit on top of it.
     package func classicSideBar() -> some View {
-        overlay {
-            GeometryReader { proxy in
-                HStack(spacing: 0) {
-                    ClassicSideBarFill(hairlineEdge: .trailing)
-                        .frame(width: proxy.safeAreaInsets.leading)
-
-                    Spacer(minLength: 0)
-
-                    ClassicSideBarFill(hairlineEdge: .leading)
-                        .frame(width: proxy.safeAreaInsets.trailing)
-                }
-                .ignoresSafeArea()
-            }
-            .allowsHitTesting(false)
-        }
+        modifier(ClassicSideBarModifier())
     }
 
     /// Twitter 4.x's dark tab bar, whatever the app's appearance. Apply inside a tab.
@@ -60,6 +47,40 @@ package enum ClassicChrome {
     static let embossedGlyph = [Color(.glyphEmbossedTop), Color(.glyphEmbossedBottom)]
     /// A selected tab icon's blue, top to bottom (`ic_tab_home_selected`).
     static let litGlyph = [Color(.glyphLitTop), Color(.glyphLitBottom)]
+}
+
+private struct ClassicSideBarModifier: ViewModifier {
+    @Environment(\.classicSideBarTabs) private var tabs
+
+    func body(content: Content) -> some View {
+        content.overlay {
+            GeometryReader { proxy in
+                HStack(spacing: 0) {
+                    ClassicSideBarFill(hairlineEdge: .trailing)
+                        .frame(width: proxy.safeAreaInsets.leading)
+                        .allowsHitTesting(false)
+
+                    Spacer(minLength: 0)
+                        .allowsHitTesting(false)
+
+                    ClassicSideBarFill(hairlineEdge: .leading)
+                        .allowsHitTesting(false)
+                        .overlay {
+                            if proxy.safeAreaInsets.trailing > 0, let tabs {
+                                tabs
+                            }
+                        }
+                        .frame(width: proxy.safeAreaInsets.trailing)
+                }
+                .ignoresSafeArea()
+            }
+        }
+    }
+}
+
+extension EnvironmentValues {
+    /// The window's tabs, drawn along iPhone Duo's side bar by ``View/classicSideBar()`` where the system keeps one.
+    @Entry package var classicSideBarTabs: AnyView? = nil
 }
 
 /// `bg_tab_bar` turned on its side: a black hairline against the content, then charcoal darkening away from it.
