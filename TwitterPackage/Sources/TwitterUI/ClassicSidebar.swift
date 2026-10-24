@@ -18,6 +18,8 @@ package struct ClassicSidebarTab<ID: Hashable>: Identifiable {
 /// dark tile when selected. Collapsed it's a strip of icons; expanded, where there's room beside a lone column, each tab
 /// has its name beside it.
 package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
+    /// The window edge it runs down; the content is on the other side.
+    let edge: HorizontalEdge
     let isExpanded: Bool
     let tabs: [ClassicSidebarTab<ID>]
     /// Room left at the top for the status bar, where the system keeps it in the side bar.
@@ -30,6 +32,7 @@ package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
     package init(
         tabs: [ClassicSidebarTab<ID>],
         selection: Binding<ID>,
+        edge: HorizontalEdge = .trailing,
         isExpanded: Bool,
         topInset: CGFloat = 0,
         compose: @escaping () -> Void,
@@ -38,6 +41,7 @@ package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
     ) {
         self.actions = actions()
         self.compose = compose
+        self.edge = edge
         self.isExpanded = isExpanded
         self.reselect = reselect
         _selection = selection
@@ -89,7 +93,7 @@ package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
         }
         .padding(.horizontal, isExpanded ? 12 : 6)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background { ClassicSidebarBackground() }
+        .background { ClassicSidebarBackground(contentEdge: edge == .trailing ? .leading : .trailing) }
         .sensoryFeedback(.selection, trigger: selection)
     }
 }
@@ -144,14 +148,17 @@ private struct ClassicSidebarTabButton<ID: Hashable>: View {
 
 /// `iPad-sidebarbg` with a black edge against the content, casting Twitter for iPad's column shadow onto it.
 private struct ClassicSidebarBackground: View {
+    let contentEdge: HorizontalEdge
+
     var body: some View {
+        let alignment: Alignment = contentEdge == .leading ? .leading : .trailing
         Image("SidebarBackground", bundle: .module)
             .resizable()
-            .overlay(alignment: .leading) {
+            .overlay(alignment: alignment) {
                 Color.black.frame(width: 1)
             }
-            .overlay(alignment: .leading) {
-                ClassicColumnShadow(edge: .leading)
+            .overlay(alignment: alignment) {
+                ClassicColumnShadow(edge: contentEdge)
             }
             .ignoresSafeArea()
             .accessibilityHidden(true)
