@@ -93,6 +93,10 @@ package struct TabStackView: View {
                             }
                             .frame(width: layout.width(ofColumn: index + 1))
                             .background { ColumnPaper() }
+                            // Pulled down by its bar, it goes, and every column after it with it.
+                            .swipeDownToClose {
+                                popColumns(after: index == 0 ? nil : store.path.ids[index - 1])
+                            }
                             .dimsUnderLeadingEdge(isEnabled: true)
                             .columnCard(isEnabled: layout.showsCards)
                             // Outside the card, onto the column it lies on.
@@ -299,6 +303,70 @@ private struct AlreadyHereShake: ViewModifier {
     }
 }
 
+/// Pulls a column down by its bar to close it: the column follows the finger, and let go far enough (or flicked) it
+/// drops off the bottom. Only a drag that starts in the bar and heads down counts, so it never competes with scrolling
+/// or pull to refresh, and it runs alongside the bar's buttons rather than in place of them.
+private struct SwipeDownToClose: ViewModifier {
+    /// The bar, and the status bar above it on a display that has one there.
+    static let barHeight: CGFloat = 110
+    static let closingDistance: CGFloat = 160
+
+    let close: () -> Void
+    @State private var isTracking = false
+    @State private var offset: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .offset(y: offset)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 12)
+                    .onChanged { value in
+                        if !isTracking {
+                            guard value.startLocation.y < Self.barHeight,
+                                value.translation.height > abs(value.translation.width)
+                            else { return }
+                            isTracking = true
+                        }
+                        offset = max(value.translation.height, 0)
+                    }
+                    .onEnded { value in
+                        guard isTracking else { return }
+                        isTracking = false
+                        if value.translation.height > Self.closingDistance
+                            || value.predictedEndTranslation.height > 2 * Self.closingDistance
+                        {
+                            withAnimation(.snappy(duration: 0.25)) {
+                                offset = 1_500
+                            } completion: {
+                                close()
+                            }
+                        } else {
+                            withAnimation(.snappy) { offset = 0 }
+                        }
+                    }
+            )
+    }
+}
+
+/// Rounds a column's top corners without clipping anything else: its bars still reach up under the status bar where
+/// it isn't a card, and its content always runs down under the home indicator.
+private struct ColumnCard: ViewModifier {
+    let isEnabled: Bool
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content
+                .mask {
+                    UnevenRoundedRectangle(topLeadingRadius: 8, topTrailingRadius: 8)
+                        .ignoresSafeArea(edges: .bottom)
+                }
+                .padding(.top, 10)
+        } else {
+            content
+        }
+    }
+}
+
 /// A column's sheet of paper: opaque.
 private struct ColumnPaper: View {
     var body: some View {
@@ -343,11 +411,13 @@ extension View {
 
     /// Darkens a column by how far it has slid under the leading edge, from where it's drawn: no state, no layout, and
     /// a plain black layer fading rather than a filter over the column's content.
+    fileprivate func swipeDownToClose(close: @escaping () -> Void) -> some View {
+        modifier(SwipeDownToClose(close: close))
+    }
+
     /// Twitter for iPad's columns as cards on the backdrop: dropped a little from the top, with rounded top corners.
     fileprivate func columnCard(isEnabled: Bool) -> some View {
-        let radius: CGFloat = isEnabled ? 8 : 0
-        return clipShape(UnevenRoundedRectangle(topLeadingRadius: radius, topTrailingRadius: radius))
-            .padding(.top, isEnabled ? 10 : 0)
+        modifier(ColumnCard(isEnabled: isEnabled))
     }
 
     fileprivate func dimsUnderLeadingEdge(isEnabled: Bool) -> some View {

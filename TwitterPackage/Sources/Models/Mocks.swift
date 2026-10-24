@@ -46,6 +46,26 @@ extension Tweet {
         )
     }
 
+    /// Two photos, for the media viewer (`--mock-media`).
+    package static var mockPhotos: Tweet {
+        var tweet = Tweet.mock(id: "150", text: "Two pages, one fold.", secondsAgo: 300)
+        tweet.media = [
+            Media(
+                id: "150-1",
+                photoURL: URL(string: "https://picsum.photos/id/1015/1200/800")!,
+                width: 1200,
+                height: 800
+            ),
+            Media(
+                id: "150-2",
+                photoURL: URL(string: "https://picsum.photos/id/1016/800/1200")!,
+                width: 800,
+                height: 1200
+            )
+        ]
+        return tweet
+    }
+
     package static let mocks: [Tweet] = [
         .mock(
             id: "100",
@@ -272,6 +292,10 @@ extension FeedPage {
         items.insert(item(.mockPoll), at: 2)
         items.insert(.tombstone(Tombstone(id: "tweet-109", text: "This post was deleted by the post author.")), at: 3)
         items += [item(.mockCommunityNote), item(.mockRestricted), item(.mockQuotingDeleted), item(.mockFinalPoll)]
+        // `--mock-media`: photos to open in the viewer, kept out of the default set so snapshots stay put.
+        if ProcessInfo.processInfo.arguments.contains("--mock-media") {
+            items.insert(item(.mockPhotos), at: 0)
+        }
         return FeedPage(items: items, bottomCursor: nil, topCursor: nil)
     }
 }

@@ -93,7 +93,9 @@ package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
         }
         .padding(.horizontal, isExpanded ? 12 : 6)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background { ClassicSidebarBackground(contentEdge: edge == .trailing ? .leading : .trailing) }
+        .background {
+            ClassicSidebarBackground(contentEdge: edge == .trailing ? .leading : .trailing, castsShadow: isExpanded)
+        }
         .sensoryFeedback(.selection, trigger: selection)
     }
 }
@@ -146,9 +148,11 @@ private struct ClassicSidebarTabButton<ID: Hashable>: View {
     }
 }
 
-/// `iPad-sidebarbg` with a black edge against the content, casting Twitter for iPad's column shadow onto it.
+/// `iPad-sidebarbg` with a black edge against the content, casting Twitter for iPad's column shadow onto it when expanded.
 private struct ClassicSidebarBackground: View {
     let contentEdge: HorizontalEdge
+    /// Expanded, it's a panel lying over the backdrop; collapsed it's the side bar's own strip, casting nothing.
+    let castsShadow: Bool
 
     var body: some View {
         let alignment: Alignment = contentEdge == .leading ? .leading : .trailing
@@ -158,7 +162,9 @@ private struct ClassicSidebarBackground: View {
                 Color.black.frame(width: 1)
             }
             .overlay(alignment: alignment) {
-                ClassicColumnShadow(edge: contentEdge)
+                if castsShadow {
+                    ClassicColumnShadow(edge: contentEdge)
+                }
             }
             .ignoresSafeArea()
             .accessibilityHidden(true)
@@ -166,6 +172,10 @@ private struct ClassicSidebarBackground: View {
 }
 
 extension EnvironmentValues {
+    /// Whether timeline action bars count views where they fit; off on the outer display, where every post's bar is
+    /// better for the room.
+    @Entry package var showsViewCounts = true
+
     /// Whether the window's ``ClassicSidebar`` carries the frontmost column's actions (and compose), so that column
     /// leaves them out of its own bar.
     @Entry package var hasClassicSidebar = false

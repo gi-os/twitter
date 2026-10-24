@@ -381,10 +381,15 @@ package struct EngagementBar: View {
     let engagement: Engagement
     let store: StoreOf<FeedFeature>
 
-    /// Where a column is too narrow for every count, the view count goes first; the focused post still shows it.
+    @Environment(\.showsViewCounts) private var showsViewCounts
+
+    /// Where a column is too narrow for every count, the view count goes first, and on the outer display it never
+    /// shows; the focused post still shows it.
     package var body: some View {
         ViewThatFits(in: .horizontal) {
-            EngagementBarRow(tweet: tweet, engagement: engagement, store: store, showsViews: true)
+            if showsViewCounts {
+                EngagementBarRow(tweet: tweet, engagement: engagement, store: store, showsViews: true)
+            }
 
             EngagementBarRow(tweet: tweet, engagement: engagement, store: store, showsViews: false)
         }

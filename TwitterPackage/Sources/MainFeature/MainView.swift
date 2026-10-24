@@ -73,18 +73,23 @@ package struct MainView: View {
                     }
                 }
                 .tabViewStyle(.tabBarOnly)
+                // The sidebar has the side bar's edge; navigation bars keep their items (back above all) along the top.
+                .toolbarVerticalBehavior(.disabled)
                 .environment(\.hasClassicSidebar, true)
+                .environment(\.showsViewCounts, placement.isInnerDisplay)
 
                 if placement.edge == .trailing {
                     placedSidebar(placement)
                 }
             }
+            // Down past the home indicator, as a tab view is: the tabs keep their own content clear of it. Sideways
+            // only into the system's side bar, which the sidebar fills.
             .ignoresSafeArea(
                 .container,
-                edges: placement.isInSystemSideBar ? (placement.edge == .leading ? .leading : .trailing) : []
+                edges: placement.isInSystemSideBar
+                    ? [.bottom, placement.edge == .leading ? .leading : .trailing] : .bottom
             )
         }
-        .animation(.snappy(duration: 0.28), value: placement)
         .onGeometryChange(for: SidebarGeometry.self) { proxy in
             SidebarGeometry(proxy: proxy)
         } action: { geometry in
@@ -109,6 +114,10 @@ package struct MainView: View {
             // Its own room is the side bar's safe area; it lays out across all of it.
             .ignoresSafeArea(.container, edges: placement.isInSystemSideBar ? .horizontal : [])
             .frame(width: placement.width)
+            // Its width settles at once (no animation of its own), so a column opening slides in against the final
+            // layout instead of one that's still moving; nothing of the wider sidebar spills over it meanwhile.
+            .clipped()
+            .zIndex(1)
     }
 
     private func sidebar(_ placement: SidebarPlacement) -> some View {
@@ -145,6 +154,7 @@ package struct MainView: View {
 /// What the sidebar's placement depends on: the window's width, and the side bar iPhone Duo keeps beside the content
 /// in some poses (the trailing safe area).
 private struct SidebarGeometry: Equatable {
+    var height: CGFloat = 0
     var leadingInset: CGFloat = 0
     var trailingInset: CGFloat = 0
     var width: CGFloat = 0
@@ -152,6 +162,7 @@ private struct SidebarGeometry: Equatable {
     init() {}
 
     init(proxy: GeometryProxy) {
+        height = proxy.size.height
         leadingInset = proxy.safeAreaInsets.leading
         trailingInset = proxy.safeAreaInsets.trailing
         width = proxy.size.width
@@ -162,6 +173,8 @@ private struct SidebarGeometry: Equatable {
 private struct SidebarPlacement: Equatable {
     /// The narrowest column worth reading beside the expanded sidebar.
     static let expandingWidth: CGFloat = 400
+    /// The outer display's shorter side is under this, the inner display's well over it.
+    static let innerDisplayMinimumSide: CGFloat = 560
     static let collapsedWidth: CGFloat = 72
     static let expandedWidth: CGFloat = 220
     /// The status bar at the top of iPhone Duo's side bar.
@@ -169,6 +182,7 @@ private struct SidebarPlacement: Equatable {
 
     var edge = HorizontalEdge.trailing
     var isExpanded = false
+    var isInnerDisplay = true
     var isInSystemSideBar = false
     var statusBarHeight: CGFloat = 0
     var width: CGFloat = 0
@@ -176,16 +190,24 @@ private struct SidebarPlacement: Equatable {
     /// - Parameter verticalBarEdge: Where iPhone Duo would put a vertical toolbar (`toolbarVerticalEdge`), if
     ///   anywhere: the side bar beside the content, under the camera and status bar.
     init(geometry: SidebarGeometry, verticalBarEdge: HorizontalEdge?, isShowingColumns: Bool) {
+        let windowWidth = geometry.width + geometry.leadingInset + geometry.trailingInset
+        // Expanded beside a lone column on the inner display, where there's room for both; the outer display always
+        // keeps the strip.
+        isInnerDisplay = min(windowWidth, geometry.height) >= Self.innerDisplayMinimumSide
+        let canExpand =
+            isInnerDisplay && !isShowingColumns && windowWidth >= Self.expandingWidth + Self.expandedWidth
         if let verticalBarEdge {
-            // In the system's side bar, at its width, under its status bar, as its own vertical bar would be.
+            // In the system's side bar, under its status bar, as its own vertical bar would be: at its width, or
+            // reaching past it when expanded.
             edge = verticalBarEdge
             isInSystemSideBar = true
             statusBarHeight = Self.systemStatusBarHeight
             let inset = verticalBarEdge == .leading ? geometry.leadingInset : geometry.trailingInset
-            width = inset > 0 ? inset : Self.collapsedWidth
+            let sideBarWidth = inset > 0 ? inset : Self.collapsedWidth
+            isExpanded = canExpand
+            width = isExpanded ? max(Self.expandedWidth, sideBarWidth) : sideBarWidth
         } else {
-            // Expanded only beside a lone column on a display with room for it (the inner display upright).
-            isExpanded = !isShowingColumns && geometry.width >= Self.expandingWidth + Self.expandedWidth
+            isExpanded = canExpand
             width = isExpanded ? Self.expandedWidth : Self.collapsedWidth
         }
     }
@@ -231,6 +253,18 @@ private struct TabLabel: View {
                 Task { @MainActor in
                     try? await Task.sleep(for: .seconds(1))
                     store.send(.home(.root(.feeds(.delegate(.open(.web(url)))))))
+                }
+            }
+            // `--cycle-columns`: opens a thread column, closes it and opens it again, a few seconds apart, to watch
+            // the strip go from one column to two without touching anything.
+            if arguments.contains("--cycle-columns"), let tweet = Tweet.mocks.first {
+                Task { @MainActor in
+                    for _ in 0..<2 {
+                        try? await Task.sleep(for: .seconds(2))
+                        store.send(.home(.root(.feeds(.delegate(.open(.thread(tweet)))))))
+                        try? await Task.sleep(for: .seconds(2))
+                        store.send(.home(.tabReselected))
+                    }
                 }
             }
             if arguments.contains("--open-window-thread"), let tweet = Tweet.mocks.first {
