@@ -185,8 +185,9 @@ private struct ClassicSidebarBackground: View {
 
     var body: some View {
         let alignment: Alignment = contentEdge == .leading ? .leading : .trailing
+        // A texture, so tiled at its own size rather than stretched to the sidebar's.
         Image("SidebarBackground", bundle: .module)
-            .resizable()
+            .resizable(resizingMode: .tile)
             .overlay(alignment: alignment) {
                 Color.black.frame(width: 1)
             }

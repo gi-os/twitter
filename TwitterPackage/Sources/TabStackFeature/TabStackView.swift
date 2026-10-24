@@ -332,13 +332,15 @@ private struct ColumnPull: Equatable {
 }
 
 /// Pulls a column down by its bar to close it, and every column after it: the pulled column follows the finger and
-/// each after it trails a beat behind, so it's plain they're going together. Let go far enough (or flicked) they drop
+/// each after it trails a little behind, so it's plain they're going together. Let go far enough (or flicked) they drop
 /// off the bottom. Only a drag that starts in the bar and heads down counts, so it never competes with scrolling or
 /// pull to refresh, and it runs alongside the bar's buttons rather than in place of them.
 private struct PullDownToClose: ViewModifier {
     /// The bar, and the status bar above it on a display that has one there.
     static let barHeight: CGFloat = 110
     static let closingDistance: CGFloat = 160
+    /// How far behind the column before it each following column trails.
+    static let followingLag: CGFloat = 40
 
     let column: Int
     @Binding var pull: ColumnPull?
@@ -348,12 +350,8 @@ private struct PullDownToClose: ViewModifier {
     func body(content: Content) -> some View {
         let lag = pull.map { column - $0.column } ?? -1
         content
-            .offset(y: lag >= 0 ? pull?.offset ?? 0 : 0)
-            // Columns after the pulled one catch up a little later the further along they are.
-            .animation(
-                lag > 0 ? .interactiveSpring(duration: 0.3).delay(Double(lag) * 0.05) : nil,
-                value: pull?.offset
-            )
+            // Each column after the pulled one follows it, a little further behind the further along it is.
+            .offset(y: lag >= 0 ? max((pull?.offset ?? 0) - CGFloat(lag) * Self.followingLag, 0) : 0)
             .simultaneousGesture(
                 DragGesture(minimumDistance: 12)
                     .onChanged { value in
