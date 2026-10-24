@@ -53,24 +53,17 @@ package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
         VStack(spacing: 0) {
             Color.clear.frame(height: topInset)
 
-            if isExpanded {
-                Image("SidebarBird", bundle: .module)
-                    .accessibilityHidden(true)
-                    .padding(.top, 8)
-                    .padding(.bottom, 12)
-                    .transition(.opacity)
-            }
-
-            // Side by side when expanded, stacked in the strip.
+            // Side by side when expanded, stacked in the strip, a little below the top.
             let layout = isExpanded ? AnyLayout(HStackLayout(spacing: 8)) : AnyLayout(VStackLayout(spacing: 12))
             layout {
                 Button(action: compose) {
                     ClassicGlyphLabel("New Post", glyph: .compose)
                 }
-                .buttonStyle(.classicBar(isOnSideBar: true))
+                .buttonStyle(ClassicComposeButtonStyle(isExpanded: isExpanded))
 
                 actions
             }
+            .padding(.top, 12)
 
             Spacer(minLength: 16)
 
@@ -97,6 +90,35 @@ package struct ClassicSidebar<ID: Hashable, Actions: View>: View {
             ClassicSidebarBackground(contentEdge: edge == .trailing ? .leading : .trailing, castsShadow: isExpanded)
         }
         .sensoryFeedback(.selection, trigger: selection)
+    }
+}
+
+/// Compose, the one action that matters most: Twitter for iPad's blue bar button (`iPad-btn_title_bar_rect_done`)
+/// with the glyph in white, pressed into it; expanded, it says "New Post" beside the glyph and fills the row.
+private struct ClassicComposeButtonStyle: ButtonStyle {
+    let isExpanded: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        Group {
+            if isExpanded {
+                configuration.label.labelStyle(.titleAndIcon)
+            } else {
+                configuration.label.labelStyle(.iconOnly)
+            }
+        }
+        .font(.subheadline.weight(.bold))
+        .foregroundStyle(.white)
+        .shadow(color: .black.opacity(0.45), radius: 0, y: -1)
+        .lineLimit(1)
+        .padding(.horizontal, 10)
+        .frame(maxWidth: isExpanded ? .infinity : nil, minHeight: 36)
+        .frame(minWidth: 44)
+        .background {
+            // 33 × 30 pt with rounded corners; the middle stretches.
+            Image(configuration.isPressed ? "BarButtonProminentPressed" : "BarButtonProminent", bundle: .module)
+                .resizable(capInsets: EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
+        }
+        .contentShape(.rect)
     }
 }
 

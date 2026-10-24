@@ -100,27 +100,49 @@ private struct Letterpress: ViewModifier {
     }
 }
 
-/// The end of a timeline, said calmly: Twitter for iPad's bird, pressed into the page.
+/// The end of a timeline or thread, said calmly: a fleuron pressed into the page the way Twitter for iPad pressed in
+/// its bird (`emboss-bird`): a faint fill, shaded along its top inside edge, with the page's light catching the lip
+/// below it.
 package struct EndOfTimeline: View {
-    @Environment(\.colorScheme) private var colorScheme
-
     package init() {}
 
     package var body: some View {
-        Group {
-            if colorScheme == .dark {
-                // The original is lit for a light page; on a dark one, press a vector bird in instead.
-                Image(systemName: "bird.fill")
-                    .font(.title)
-                    .foregroundStyle(.quaternary)
-                    .letterpress()
-            } else {
-                Image("EmbossedBird", bundle: .module)
+        DebossedGlyph(systemName: "fleuron.fill", size: 34)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 40)
+            .accessibilityLabel("End of timeline")
+    }
+}
+
+/// A symbol pressed into the page: a faint fill, a shadow along its top inside edge (the glyph less itself moved
+/// down), and the page's light on the lip below.
+private struct DebossedGlyph: View {
+    let systemName: String
+    let size: CGFloat
+
+    var body: some View {
+        let glyph = Image(systemName: systemName).font(.system(size: size))
+        glyph
+            .foregroundStyle(Color(.debossFill))
+            .overlay {
+                glyph
+                    .foregroundStyle(Color(.debossShadow))
+                    .mask {
+                        glyph
+                            .overlay {
+                                glyph.offset(y: 2).blendMode(.destinationOut)
+                            }
+                            .compositingGroup()
+                            .blur(radius: 0.6)
+                    }
+                    .mask { glyph }
             }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
-        .accessibilityLabel("End of timeline")
+            .background {
+                glyph
+                    .foregroundStyle(Color(.debossHighlight))
+                    .offset(y: 1)
+            }
+            .accessibilityHidden(true)
     }
 }
 

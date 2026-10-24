@@ -397,7 +397,7 @@ private struct StackedColumn: View {
                 .ignoresSafeArea(.container, edges: .horizontal)
                 .toolbar {
                     if isFrontmost {
-                        ToolbarItem(placement: .cancellationAction) {
+                        ToolbarItem(placement: .topBarTrailing) {
                             Button("Close", systemImage: "xmark", action: close)
                                 .buttonStyle(.classicBar(isOnSideBar: false))
                         }
