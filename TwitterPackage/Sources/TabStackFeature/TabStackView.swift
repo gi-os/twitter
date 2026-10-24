@@ -118,7 +118,9 @@ package struct TabStackView: View {
                                     insertion: .offset(
                                         x: layout.entranceOffset(ofColumn: index + 1, from: previousLayout)
                                     ),
-                                    removal: .move(edge: .trailing).combined(with: .opacity)
+                                    // Fading where it is: a column sliding away after its state is gone would bring
+                                    // rows into view that report in to a column that no longer exists.
+                                    removal: .opacity
                                 )
                             )
                         }
@@ -401,7 +403,9 @@ private struct ColumnCard: ViewModifier {
                     GeometryReader { proxy in
                         let insets = proxy.safeAreaInsets
                         UnevenRoundedRectangle(topLeadingRadius: 4, topTrailingRadius: 4)
-                            .padding(EdgeInsets(top: insets.top, leading: insets.leading, bottom: 0, trailing: insets.trailing))
+                            .padding(.top, insets.top)
+                            .padding(.leading, insets.leading)
+                            .padding(.trailing, insets.trailing)
                     }
                     .ignoresSafeArea()
                 }
