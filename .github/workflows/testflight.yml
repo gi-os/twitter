@@ -8,12 +8,13 @@ on:
 jobs:
   testflight:
     runs-on: macos-26
+    environment: iOS dev
     timeout-minutes: 60
     env:
       BUNDLE_ID: ${{ vars.BUNDLE_ID || 'com.gios.twitter' }}
-      TEAM_ID: ${{ secrets.TEAM_ID }}
-      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      TEAM_ID: ${{ secrets.TEAM_ID || vars.TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID || vars.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID || vars.ASC_ISSUER_ID }}
     steps:
       - uses: actions/checkout@v4
 
@@ -26,7 +27,7 @@ jobs:
       - name: Write App Store Connect API key
         run: |
           mkdir -p ~/private_keys
-          echo "${{ secrets.ASC_KEY_P8 }}" > ~/private_keys/AuthKey_$ASC_KEY_ID.p8
+          echo "${{ secrets.ASC_KEY_P8 || vars.ASC_KEY_P8 }}" > ~/private_keys/AuthKey_$ASC_KEY_ID.p8
 
       - name: Point project at your team + bundle ID
         run: |
