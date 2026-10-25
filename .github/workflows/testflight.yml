@@ -7,7 +7,7 @@ on:
 
 jobs:
   testflight:
-    runs-on: macos-27
+    runs-on: xcode-27
     environment: iOS dev
     timeout-minutes: 60
     env:
