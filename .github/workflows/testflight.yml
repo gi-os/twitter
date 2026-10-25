@@ -33,6 +33,17 @@ jobs:
           mkdir -p ~/private_keys
           echo "${{ secrets.ASC_KEY_P8 || vars.ASC_KEY_P8 }}" > ~/private_keys/AuthKey_$ASC_KEY_ID.p8
 
+      - name: Sanity-check API key (no values printed)
+        run: |
+          K=~/private_keys/AuthKey_$ASC_KEY_ID.p8
+          echo "key id length: ${#ASC_KEY_ID} (expect 10)"
+          echo "issuer id length: ${#ASC_ISSUER_ID} (expect 36)"
+          echo "team id length: ${#TEAM_ID} (expect 10)"
+          echo "p8 lines: $(wc -l < $K) (expect ~6)"
+          head -1 $K | grep -q "BEGIN PRIVATE KEY" && echo "p8 header ok" || echo "p8 header MISSING"
+          grep -q "END PRIVATE KEY" $K && echo "p8 footer ok" || echo "p8 footer MISSING"
+          openssl pkey -in $K -noout 2>/dev/null && echo "p8 parses ok" || echo "p8 DOES NOT PARSE"
+
       - name: Point project at your team + bundle ID
         run: |
           sed -i '' "s/gold\.samhenri\.Twitter/$BUNDLE_ID/g; s/SM75355Y6R/$TEAM_ID/g" Twitter.xcodeproj/project.xcproj
