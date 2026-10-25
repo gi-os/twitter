@@ -73,6 +73,7 @@ jobs:
             <key>destination</key><string>upload</string>
             <key>signingStyle</key><string>automatic</string>
             <key>teamID</key><string>$TEAM_ID</string>
+            <key>testFlightInternalTestingOnly</key><true/>
           </dict></plist>
           PLIST
           xcodebuild -exportArchive \
